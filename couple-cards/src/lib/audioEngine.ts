@@ -5,14 +5,14 @@
  *
  * AudioContext 必须在用户首次交互后 resume(),故在交互回调内调 init()。
  *
- * BGM 使用 AudioBufferSourceNode 方案(fetch + decodeAudioData + BufferSource),
- * 而非 <audio> 元素。原因:<audio> 切歌时 src 变更会中止进行中的网络请求,
- * 暂停时也可能中止加载,两者均触发 net::ERR_ABORTED。
- * BufferSource 方案将音频文件完整解码为 AudioBuffer 后播放,
- * 切歌/暂停只操作内存中的 buffer,不涉及网络请求中止。
- *
- * 支持浏览器可解码的所有格式(mp3/flac/wav/aac/m4a/ogg/opus 等)。
+ * BGM 使用 HTMLAudioElement + createMediaElementSource 方案。
+ * 原因:AudioContext.decodeAudioData() 在 Chrome 中不支持 flac 格式,
+ * 而 <audio> 元素原生支持 flac/mp3/wav/aac 等所有浏览器可播放的格式。
+ * 通过 createMediaElementSource() 将 <audio> 连接到 Web Audio API 的 GainNode,
+ * 可统一控制音量,且切歌时只需更换 src + play(),不涉及网络请求中止。
  */
+
+const BASE = import.meta.env.BASE_URL
 
 interface Playlist {
   tracks: string[]
@@ -32,14 +32,10 @@ class AudioEngine {
   private cursor = 0
   private loading = false
 
-  // AudioBufferSourceNode 方案
-  private buffers: Map<string, AudioBuffer> = new Map() // 解码后的音频缓存
-  private currentSource: AudioBufferSourceNode | null = null
-  private currentBuffer: AudioBuffer | null = null
+  // HTMLAudioElement 方案
+  private audioEl: HTMLAudioElement | null = null
   private currentFile: string | null = null
-  private startTime = 0 // 当前曲目开始播放的 ctx 时间
-  private offset = 0 // 当前曲目的播放偏移(用于暂停/恢复)
-  private loadGen = 0 // 加载代数,防止快速切歌时旧请求覆盖新请求
+  private isAudioReady = false // <audio> 是否已 canplay
 
   /** 初始化(惰性),须在用户交互后调用 */
   init() {
@@ -177,7 +173,7 @@ class AudioEngine {
   /** 加载播放列表 manifest */
   private async loadPlaylist(): Promise<string[]> {
     try {
-      const res = await fetch('./audio/playlist.json', { cache: 'no-cache' })
+      const res = await fetch(`${BASE}audio/playlist.json`, { cache: 'no-cache' })
       if (!res.ok) return []
       const data: Playlist = await res.json()
       const tracks = Array.isArray(data.tracks) ? data.tracks : []
@@ -198,23 +194,6 @@ class AudioEngine {
     return file ? file.replace(/\.[^.]+$/, '') : ''
   }
 
-  /** 加载并解码音频文件为 AudioBuffer(带缓存) */
-  private async loadTrack(file: string): Promise<AudioBuffer | null> {
-    if (!this.ctx) return null
-    const cached = this.buffers.get(file)
-    if (cached) return cached
-    try {
-      const res = await fetch('./audio/' + encodeURIComponent(file))
-      if (!res.ok) return null
-      const arrayBuffer = await res.arrayBuffer()
-      const buffer = await this.ctx.decodeAudioData(arrayBuffer)
-      this.buffers.set(file, buffer)
-      return buffer
-    } catch {
-      return null
-    }
-  }
-
   /** 确保 bgmGain 已创建 */
   private ensureBgmGain() {
     if (!this.ctx || !this.master) return
@@ -225,44 +204,18 @@ class AudioEngine {
     }
   }
 
-  /** 停止当前播放源(不清除 buffer,以便恢复) */
-  private stopCurrentSource() {
-    if (!this.currentSource) return
-    const s = this.currentSource
-    this.currentSource = null // 先置空,防止 onended 触发自动连播
-    try {
-      s.stop()
-    } catch {
-      /* 已停止 */
-    }
-    s.disconnect()
-  }
-
-  /** 播放 AudioBuffer(从指定偏移开始) */
-  private playBuffer(buffer: AudioBuffer, startOffset: number) {
-    if (!this.ctx) return
-    // 先确保 bgmGain 已创建(首次调用时还未创建),
-    // 顺序不能反:若先检查 !this.bgmGain 会直接 return,ensureBgmGain 永远不执行
+  /** 确保 <audio> 元素已创建 */
+  private ensureAudioElement() {
+    if (this.audioEl) return
     this.ensureBgmGain()
-    if (!this.bgmGain) return
 
-    this.stopCurrentSource()
+    this.audioEl = new Audio()
+    this.audioEl.preload = 'auto'
+    this.audioEl.volume = 0.45
 
-    const source = this.ctx.createBufferSource()
-    source.buffer = buffer
-    source.connect(this.bgmGain)
-    source.start(0, startOffset)
-    this.currentSource = source
-    this.currentBuffer = buffer
-    this.startTime = this.ctx.currentTime
-    this.offset = startOffset
-
-    source.onended = () => {
-      // 自然播放结束 → 自动连播下一曲
-      // (手动停止时 currentSource 已被置空,不会进入此分支)
-      if (this.currentSource === source && this.bgmEnabled) {
-        this.currentSource = null
-        this.offset = 0
+    // 自然播放结束 → 自动连播下一曲
+    this.audioEl.addEventListener('ended', () => {
+      if (this.bgmEnabled) {
         this.cursor++
         if (this.cursor >= this.order.length) {
           this.order = this.shuffle(this.tracks.map((_, i) => i))
@@ -270,12 +223,16 @@ class AudioEngine {
         }
         void this.playCurrentTrack()
       }
-    }
+    })
+
+    this.audioEl.addEventListener('canplay', () => {
+      this.isAudioReady = true
+    })
   }
 
   /** 加载并播放当前曲目 */
   private async playCurrentTrack() {
-    if (!this.ctx || !this.bgmEnabled || !this.tracks.length) return
+    if (!this.bgmEnabled || !this.tracks.length) return
     if (!this.order.length) {
       this.order = this.shuffle(this.tracks.map((_, i) => i))
       this.cursor = 0
@@ -284,21 +241,17 @@ class AudioEngine {
     const file = this.tracks[idx]
     if (!file) return
 
-    const gen = ++this.loadGen
-    const buffer = await this.loadTrack(file)
-    // 防止快速切歌时旧请求覆盖新请求
-    if (gen !== this.loadGen || !this.bgmEnabled) return
-    if (buffer) {
-      this.currentFile = file
-      this.playBuffer(buffer, 0)
-    } else {
-      // 解码失败,跳到下一首
-      this.cursor++
-      if (this.cursor >= this.order.length) {
-        this.order = this.shuffle(this.tracks.map((_, i) => i))
-        this.cursor = 0
-      }
-      void this.playCurrentTrack()
+    this.ensureAudioElement()
+    if (!this.audioEl) return
+
+    this.isAudioReady = false
+    this.currentFile = file
+    this.audioEl.src = `${BASE}audio/${encodeURIComponent(file)}`
+    try {
+      await this.audioEl.play()
+    } catch {
+      // play() 可能因浏览器策略被拒绝(如未交互),
+      // 下次用户交互时会重试
     }
   }
 
@@ -307,13 +260,17 @@ class AudioEngine {
     if (!this.ctx) this.init()
     if (!this.ctx || !this.master || !this.bgmEnabled) return
 
-    // 暂停后恢复:有 buffer 但无 source → 从 offset 恢复
-    if (this.currentBuffer && !this.currentSource) {
-      this.playBuffer(this.currentBuffer, this.offset)
+    // 暂停后恢复:<audio> 已有 src,直接 play
+    if (this.audioEl && this.currentFile && this.audioEl.paused) {
+      try {
+        await this.audioEl.play()
+      } catch {
+        /* noop */
+      }
       return
     }
     // 已在播放
-    if (this.currentSource) return
+    if (this.audioEl && !this.audioEl.paused) return
     if (this.loading) return
     this.loading = true
 
@@ -338,31 +295,26 @@ class AudioEngine {
     void this.playCurrentTrack()
   }
 
-  /** 停止背景音乐(暂停,保留 buffer 和 offset 以便恢复) */
+  /** 停止背景音乐(暂停,保留位置以便恢复) */
   stopBgm() {
-    if (this.currentSource && this.ctx) {
-      // 记录当前播放位置
-      this.offset += this.ctx.currentTime - this.startTime
-      // 限制 offset 不超过 buffer 时长
-      if (this.currentBuffer && this.offset >= this.currentBuffer.duration) {
-        this.offset = 0
-      }
-      this.stopCurrentSource()
+    if (this.audioEl && !this.audioEl.paused) {
+      this.audioEl.pause()
     }
     this.stopAmbientPad()
   }
 
   /** 下一首(手动跳转) */
   nextTrack() {
-    if (!this.tracks.length) return
+    if (!this.tracks.length) {
+      // tracks 为空时尝试加载(首次切歌)
+      if (this.bgmEnabled) void this.startBgm()
+      return
+    }
     this.cursor++
     if (this.cursor >= this.order.length) {
       this.order = this.shuffle(this.tracks.map((_, i) => i))
       this.cursor = 0
     }
-    this.stopCurrentSource()
-    this.offset = 0
-    this.currentBuffer = null
     this.currentFile = null
     if (this.bgmEnabled) {
       void this.playCurrentTrack()
