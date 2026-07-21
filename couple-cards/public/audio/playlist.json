@@ -1,0 +1,7 @@
+{
+  "_说明": "把音乐文件放进本目录(public/audio/),然后在下方 tracks 数组里列出文件名。顺序不重要,会随机播放。支持的格式:mp3、flac、wav、aac、m4a、ogg、opus 等浏览器可解码的格式。LDAC 是蓝牙传输编码而非文件格式,无法作为文件源;请用高码率 flac 或 wav 作为高音质源(蓝牙耳机/音箱在传输时会自动协商到 LDAC)。",
+  "tracks": [
+    "LAUV_-_I_Like_Me_Better.flac",
+    "AC_DC_-_Highway_to_Hell.flac"
+  ]
+}

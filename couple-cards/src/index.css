@@ -1,0 +1,161 @@
+@import './styles/themes.css';
+@import './styles/animations.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  background-color: var(--bg);
+  color: var(--fg);
+  transition: background-color 0.6s ease, color 0.6s ease;
+  overflow-x: hidden;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-soft);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-rose);
+}
+
+/* 文字选择 */
+::selection {
+  background: var(--accent-rose);
+  color: var(--bg);
+}
+
+/* 隐藏默认光标(由 CustomCursor 接管),移动端保持默认 */
+@media (hover: hover) and (pointer: fine) {
+  body.custom-cursor-active,
+  body.custom-cursor-active * {
+    cursor: none !important;
+  }
+}
+
+@layer components {
+  .container-x {
+    @apply mx-auto w-full max-w-7xl px-6 md:px-10;
+  }
+  .glass {
+    background: color-mix(in srgb, var(--card) 70%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid color-mix(in srgb, var(--border-c) 60%, transparent);
+  }
+  .text-gradient {
+    background: linear-gradient(120deg, var(--accent-rose), var(--accent-gold));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-7 py-3 font-medium transition-all;
+    background: linear-gradient(120deg, var(--accent-rose), var(--accent-gold));
+    color: var(--bg);
+    box-shadow: var(--shadow-card);
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-7 py-3 font-medium transition-all;
+    border: 1px solid var(--border-c);
+    color: var(--fg);
+  }
+  /* 统一表单控件风格:select / input / date 共用同一视觉语言 */
+  .bank-select,
+  .setting-input {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-c);
+    background-color: color-mix(in srgb, var(--card) 50%, transparent);
+    padding: 0.55rem 0.85rem;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--fg);
+    outline: none;
+    transition: border-color 0.2s, background-color 0.2s;
+    cursor: pointer;
+  }
+  .bank-select:focus,
+  .setting-input:focus {
+    border-color: var(--accent-rose);
+    background-color: color-mix(in srgb, var(--card) 70%, transparent);
+  }
+  /* select 自定义箭头 */
+  .bank-select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a89b8c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 12px;
+    padding-right: 2rem;
+  }
+  .bank-select option {
+    background: var(--card);
+    color: var(--fg);
+  }
+  /* date input:强制与 text input 等高,覆盖 Chrome 内部最小高度 */
+  .setting-input[type='date'] {
+    height: 2.5rem;
+    min-height: 2.5rem;
+  }
+  .setting-input[type='date']::-webkit-date-and-time-value {
+    min-height: 1.4rem;
+    text-align: left;
+  }
+  /* date input 日历图标适配明暗主题 */
+  .setting-input[type='date']::-webkit-calendar-picker-indicator {
+    filter: var(--calendar-icon-filter, none);
+    cursor: pointer;
+    opacity: 0.6;
+  }
+  .setting-input[type='date']::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+}
+
+/* 减少动效偏好降级 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

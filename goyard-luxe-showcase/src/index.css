@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-cream: #FAF8F5;
+    --color-beige: #F0EBE3;
+    --color-sand: #E8E0D4;
+    --color-gold: #C4A265;
+    --color-dark-brown: #3D3229;
+    --color-charcoal: #1A1A1A;
+    --color-warm-gray: #8B7E74;
+
+    font-family: "Inter", system-ui, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--color-cream);
+    color: var(--color-charcoal);
+  }
+
+  *,
+  *::before,
+  *::after,
+  a,
+  button,
+  input,
+  textarea,
+  select,
+  [role="button"],
+  [data-cursor="pointer"],
+  label[for] {
+    cursor: none !important;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  body {
+    overflow-x: hidden;
+    background-color: var(--color-cream);
+  }
+
+  ::selection {
+    background-color: var(--color-gold);
+    color: var(--color-cream);
+  }
+}
+
+@layer components {
+  .font-serif-display {
+    font-family: "Playfair Display", Georgia, serif;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .glass-effect {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    background-color: rgba(250, 248, 245, 0.85);
+  }
+
+  .pill-button {
+    @apply relative inline-flex items-center justify-center px-8 py-3 rounded-full border border-charcoal/20 text-sm font-sans font-medium tracking-wider uppercase overflow-hidden transition-all duration-500 ease-out-expo;
+  }
+
+  .pill-button::before {
+    content: "";
+    @apply absolute inset-0 bg-charcoal transform scale-x-0 origin-left transition-transform duration-500 ease-out-expo;
+  }
+
+  .pill-button:hover::before {
+    @apply scale-x-100;
+  }
+
+  .pill-button span {
+    @apply relative z-10 transition-colors duration-500;
+  }
+
+  .pill-button:hover span {
+    @apply text-cream;
+  }
+
+  .pill-button-light {
+    @apply border-beige/40 text-cream;
+  }
+
+  .pill-button-light::before {
+    @apply bg-cream;
+  }
+
+  .pill-button-light:hover span {
+    @apply text-charcoal;
+  }
+
+  .pill-button-nav-light {
+    @apply border-cream/30 text-cream;
+  }
+
+  .pill-button-nav-light::before {
+    @apply bg-cream;
+  }
+
+  .pill-button-nav-light:hover {
+    @apply border-cream/60;
+  }
+
+  .pill-button-nav-light:hover span {
+    @apply text-charcoal;
+  }
+
+  .image-hover-zoom {
+    @apply overflow-hidden relative;
+  }
+
+  .image-hover-zoom img {
+    @apply transition-transform duration-700 ease-out-expo;
+  }
+
+  .image-hover-zoom:hover img {
+    @apply scale-105;
+  }
+
+  .image-hover-zoom::after {
+    content: "";
+    @apply absolute inset-0 bg-charcoal/0 transition-colors duration-500 pointer-events-none;
+  }
+
+  .image-hover-zoom:hover::after {
+    @apply bg-charcoal/10;
+  }
+
+  .stagger-item {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+
+  .stagger-item.revealed {
+    animation: fade-in-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+@layer utilities {
+  .mask-gradient-b {
+    mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  }
+}
