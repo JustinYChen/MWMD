@@ -6,12 +6,16 @@ import { CoupleSetupModal } from '@/components/profile/CoupleSetupModal'
 import { AnniversaryEasterEgg } from '@/components/profile/AnniversaryEasterEgg'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { audioEngine } from '@/lib/audioEngine'
+import { useCloudSync } from '@/hooks/useCloudSync'
 import { useEffect, useRef } from 'react'
 
 export default function App() {
   const theme = useSettingsStore((s) => s.theme)
   const bgmEnabled = useSettingsStore((s) => s.bgmEnabled)
   const autoPlayStarted = useRef(false)
+
+  // 云端同步:启动时 pull,数据变更后防抖 push
+  useCloudSync()
 
   // 确保主题在首次挂载时应用(覆盖 index.html 默认值)
   useEffect(() => {

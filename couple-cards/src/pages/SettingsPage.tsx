@@ -1,14 +1,17 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, Moon, Sun, Volume2, Music, RotateCcw } from 'lucide-react'
+import { Settings as SettingsIcon, Moon, Sun, Volume2, Music, RotateCcw, Cloud, RefreshCw, Check, AlertCircle, Loader2, Upload, Download } from 'lucide-react'
 import { useProfileStore } from '@/store/useProfileStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { useDeckStore } from '@/store/useDeckStore'
 import { useHistoryStore } from '@/store/useHistoryStore'
 import { useFavoritesStore } from '@/store/useFavoritesStore'
+import { useSyncStore } from '@/store/useSyncStore'
 import { audioEngine } from '@/lib/audioEngine'
 import { Footer } from '@/components/layout/Footer'
 import { Modal } from '@/components/ui/Modal'
 import { DatePicker } from '@/components/ui/DatePicker'
+import { verifyToken } from '@/lib/cloudSync'
+import { manualPull, manualPush } from '@/hooks/useCloudSync'
 import { cn } from '@/lib/utils'
 
 export default function SettingsPage() {
@@ -130,6 +133,9 @@ export default function SettingsPage() {
               列出文件名,支持 mp3/flac/wav/aac/m4a/ogg,随机连播
             </p>
           </Section>
+
+          {/* 云同步 */}
+          <CloudSyncSection />
 
           {/* 数据 */}
           <Section title="数据 · Data">
@@ -259,5 +265,116 @@ function Switch({
         )}
       />
     </button>
+  )
+}
+
+/** 云同步设置区:输入 GitHub Token,管理跨设备同步 */
+function CloudSyncSection() {
+  const { token, autoSync, status, lastSyncAt, error } = useSyncStore()
+  const { setToken, setAutoSync } = useSyncStore()
+  const [inputToken, setInputToken] = useState(token)
+  const [verifying, setVerifying] = useState(false)
+  const [verifyMsg, setVerifyMsg] = useState('')
+
+  const handleSave = async () => {
+    if (!inputToken.trim()) {
+      setToken('')
+      setVerifyMsg('')
+      return
+    }
+    setVerifying(true)
+    setVerifyMsg('')
+    const ok = await verifyToken(inputToken.trim())
+    setVerifying(false)
+    if (ok) {
+      setToken(inputToken.trim())
+      setVerifyMsg('Token 验证通过')
+      // 保存后自动 pull 一次
+      setTimeout(() => manualPull(), 500)
+    } else {
+      setVerifyMsg('Token 无效或无 Gist 权限')
+    }
+  }
+
+  const fmtTime = (iso: string) => {
+    if (!iso) return '未同步'
+    const d = new Date(iso)
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+
+  return (
+    <Section title="云同步 · Cloud Sync" className="z-10">
+      <div className="flex items-start gap-2 text-xs text-fg-soft">
+        <Cloud size={14} className="mt-0.5 shrink-0 text-gold" />
+        <p>
+          通过 GitHub Gist 跨设备同步题库、收藏、历史和设置。
+          需要一个有 <code className="rounded bg-card px-1">gist</code> 权限的 GitHub Token。
+          <a
+            href="https://github.com/settings/tokens/new?scopes=gist&description=MWMD%20Cloud%20Sync"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-1 text-rose underline-offset-2 hover:underline"
+          >
+            点击创建 Token →
+          </a>
+        </p>
+      </div>
+
+      <Field label="GitHub Token">
+        <input
+          type="password"
+          value={inputToken}
+          onChange={(e) => setInputToken(e.target.value)}
+          onBlur={handleSave}
+          placeholder="ghp_..."
+          className="setting-input"
+        />
+      </Field>
+
+      {verifyMsg && (
+        <p className={cn(
+          'flex items-center gap-1.5 text-xs',
+          verifyMsg.includes('通过') ? 'text-emerald-500' : 'text-rose'
+        )}>
+          {verifyMsg.includes('通过') ? <Check size={12} /> : <AlertCircle size={12} />}
+          {verifyMsg}
+        </p>
+      )}
+
+      {token && (
+        <>
+          <Row label="自动同步">
+            <Switch checked={autoSync} onChange={setAutoSync} />
+          </Row>
+
+          <div className="flex items-center gap-2 text-xs text-fg-soft">
+            {status === 'syncing' && <Loader2 size={12} className="animate-spin text-gold" />}
+            {status === 'success' && <Check size={12} className="text-emerald-500" />}
+            {status === 'error' && <AlertCircle size={12} className="text-rose" />}
+            <span>
+              {status === 'syncing' ? '同步中...' : `上次同步: ${fmtTime(lastSyncAt)}`}
+            </span>
+            {error && <span className="text-rose">· {error}</span>}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => manualPull()}
+              disabled={status === 'syncing'}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border-c px-4 py-2 text-xs text-fg-soft transition-colors hover:text-fg disabled:opacity-50"
+            >
+              <Download size={13} /> 从云端拉取
+            </button>
+            <button
+              onClick={() => manualPush()}
+              disabled={status === 'syncing'}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border-c px-4 py-2 text-xs text-fg-soft transition-colors hover:text-fg disabled:opacity-50"
+            >
+              <Upload size={13} /> 推送到云端
+            </button>
+          </div>
+        </>
+      )}
+    </Section>
   )
 }
