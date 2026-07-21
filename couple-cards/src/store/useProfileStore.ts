@@ -11,15 +11,31 @@ interface ProfileStore extends Profile {
 export const useProfileStore = create<ProfileStore>()(
   persist(
     (set) => ({
-      nameA: '',
-      nameB: '',
-      anniversary: '',
-      setupCompleted: false,
+      // 固定情侣信息(单人使用,写死)
+      nameA: '陈小孩儿',
+      nameB: '张小孩儿',
+      anniversary: '2026-07-04',
+      setupCompleted: true,
       setProfile: (p) => set((s) => ({ ...s, ...p })),
       completeSetup: () => set({ setupCompleted: true }),
       reset: () =>
-        set({ nameA: '', nameB: '', anniversary: '', setupCompleted: false }),
+        set({ nameA: '陈小孩儿', nameB: '张小孩儿', anniversary: '2026-07-04', setupCompleted: true }),
     }),
-    { name: 'cc:profile', version: 1 }
+    {
+      name: 'cc:profile',
+      version: 2,
+      migrate: (persisted: unknown, fromVersion: number) => {
+        // v1 → v2:强制覆盖为固定情侣信息
+        if (fromVersion < 2) {
+          return {
+            nameA: '陈小孩儿',
+            nameB: '张小孩儿',
+            anniversary: '2026-07-04',
+            setupCompleted: true,
+          }
+        }
+        return persisted as Record<string, unknown>
+      },
+    }
   )
 )
