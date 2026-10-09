@@ -13,7 +13,7 @@ import {
   pushToCloud,
   type CloudData,
 } from '@/lib/cloudSync'
-import { APP_EMAIL } from '@/lib/supabase'
+import { APP_ACCOUNT } from '@/lib/supabase'
 import { migrateLocalImagesToCloud } from '@/lib/planMedia'
 
 /** push 失败后的自动重试延迟 */
@@ -152,7 +152,8 @@ async function doPull(): Promise<boolean> {
 export async function loginCloud(password: string): Promise<string | null> {
   const err = await signInCloud(password)
   if (!err) {
-    useSyncStore.getState().setAccount(APP_EMAIL)
+    // store 中存展示账号名(登录态标志)
+    useSyncStore.getState().setAccount(APP_ACCOUNT)
   }
   return err
 }

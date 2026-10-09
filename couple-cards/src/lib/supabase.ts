@@ -13,6 +13,9 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
 /** 应用专属共享账号(情侣二人共用;密码在设置页输入,session 由 supabase-js 持久化) */
 export const APP_EMAIL = 'mwmd@justinychen.app'
 
+/** 对用户展示的账号名(内部以 APP_EMAIL 登录) */
+export const APP_ACCOUNT = 'cjy&zl.app'
+
 /** 计划图片存储桶(公开读,仅登录账号可写) */
 export const STORAGE_BUCKET = 'plan-images'
 

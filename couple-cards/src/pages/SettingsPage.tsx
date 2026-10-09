@@ -11,6 +11,7 @@ import { Footer } from '@/components/layout/Footer'
 import { Modal } from '@/components/ui/Modal'
 import { DatePicker } from '@/components/ui/DatePicker'
 import { manualPull, manualPush, loginCloud, logoutCloud } from '@/hooks/useCloudSync'
+import { APP_ACCOUNT } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 
 export default function SettingsPage() {
@@ -355,7 +356,7 @@ function CloudSyncSection() {
         </>
       ) : (
         <>
-          <Field label="同步密码">
+          <Field label={`账号 · ${APP_ACCOUNT}`}>
             <div className="flex gap-2">
               <input
                 type="password"
