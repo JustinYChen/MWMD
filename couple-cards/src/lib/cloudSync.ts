@@ -33,6 +33,10 @@ export interface CloudData {
     drawnIds: string[]
     mode: string
   }
+  plans: {
+    plans: unknown[]
+    categories: unknown[]
+  }
   updatedAt: string
 }
 

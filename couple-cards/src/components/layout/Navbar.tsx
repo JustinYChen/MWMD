@@ -6,6 +6,7 @@ import { TopControls } from '@/components/layout/TopControls'
 const NAV = [
   { to: '/', zh: '首页', en: 'Home' },
   { to: '/draw', zh: '抽牌', en: 'Draw' },
+  { to: '/plans', zh: '计划', en: 'Plans' },
   { to: '/banks', zh: '题库', en: 'Banks' },
   { to: '/favorites', zh: '收藏', en: 'Saved' },
   { to: '/history', zh: '历史', en: 'History' },

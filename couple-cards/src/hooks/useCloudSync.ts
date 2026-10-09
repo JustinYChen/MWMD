@@ -5,6 +5,7 @@ import { useFavoritesStore } from '@/store/useFavoritesStore'
 import { useHistoryStore } from '@/store/useHistoryStore'
 import { useQuestionBankStore } from '@/store/useQuestionBankStore'
 import { useDeckStore } from '@/store/useDeckStore'
+import { usePlansStore } from '@/store/usePlansStore'
 import { pullFromCloud, pushToCloud, type CloudData } from '@/lib/cloudSync'
 
 /** 收集各 store 当前数据(仅数据字段,不含方法) */
@@ -14,6 +15,7 @@ function collectData(): CloudData {
   const history = useHistoryStore.getState()
   const banks = useQuestionBankStore.getState()
   const deck = useDeckStore.getState()
+  const plans = usePlansStore.getState()
 
   return {
     version: 1,
@@ -37,6 +39,10 @@ function collectData(): CloudData {
     deck: {
       drawnIds: deck.drawnIds,
       mode: deck.mode,
+    },
+    plans: {
+      plans: plans.plans,
+      categories: plans.categories,
     },
     updatedAt: new Date().toISOString(),
   }
@@ -73,6 +79,12 @@ function applyCloudData(data: CloudData) {
   useDeckStore.setState({
     drawnIds: data.deck?.drawnIds ?? deck.drawnIds,
     mode: (data.deck?.mode ?? deck.mode) as typeof deck.mode,
+  })
+
+  const plans = usePlansStore.getState()
+  usePlansStore.setState({
+    plans: (data.plans?.plans ?? plans.plans) as typeof plans.plans,
+    categories: (data.plans?.categories ?? plans.categories) as typeof plans.categories,
   })
 }
 
@@ -169,6 +181,7 @@ export function useCloudSync() {
       useHistoryStore.subscribe(schedulePush),
       useQuestionBankStore.subscribe(schedulePush),
       useDeckStore.subscribe(schedulePush),
+      usePlansStore.subscribe(schedulePush),
     ]
 
     return () => {

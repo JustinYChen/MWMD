@@ -9,6 +9,7 @@ import FavoritesPage from '@/pages/FavoritesPage'
 import HistoryPage from '@/pages/HistoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import QuestionBankPage from '@/pages/QuestionBankPage'
+import PlansPage from '@/pages/PlansPage'
 
 function RootLayout() {
   const loc = useLocation()
@@ -33,6 +34,7 @@ export const router = createHashRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: 'draw', element: <DrawPage /> },
+      { path: 'plans', element: <PlansPage /> },
       { path: 'favorites', element: <FavoritesPage /> },
       { path: 'history', element: <HistoryPage /> },
       { path: 'banks', element: <QuestionBankPage /> },

@@ -3,6 +3,8 @@ import { Heart } from 'lucide-react'
 import { useProfileStore } from '@/store/useProfileStore'
 import { Modal } from '@/components/ui/Modal'
 import { MagneticButton } from '@/components/ui/MagneticButton'
+import { DatePicker } from '@/components/ui/DatePicker'
+import { cn } from '@/lib/utils'
 
 /** 首次访问弹窗:录入情侣名字 + 纪念日 */
 export function CoupleSetupModal() {
@@ -37,7 +39,7 @@ export function CoupleSetupModal() {
               value={nameA}
               onChange={(e) => setNameA(e.target.value)}
               placeholder="例：小满"
-              className="input"
+              className={inputCls}
             />
           </Field>
           <Field label="TA 的名字">
@@ -45,17 +47,12 @@ export function CoupleSetupModal() {
               value={nameB}
               onChange={(e) => setNameB(e.target.value)}
               placeholder="例：小暑"
-              className="input"
+              className={inputCls}
             />
           </Field>
         </div>
         <Field label="在一起的日子">
-          <input
-            type="date"
-            value={anniversary}
-            onChange={(e) => setAnniversary(e.target.value)}
-            className="input"
-          />
+          <DatePicker value={anniversary} onChange={setAnniversary} />
         </Field>
       </div>
       <div className="mt-6 flex items-center justify-between">
@@ -69,23 +66,17 @@ export function CoupleSetupModal() {
           <Heart size={15} /> 开始
         </MagneticButton>
       </div>
-      <style>{`
-        .input {
-          width: 100%;
-          border-radius: 0.75rem;
-          border: 1px solid var(--border-c);
-          background: color-mix(in srgb, var(--bg) 60%, transparent);
-          padding: 0.6rem 0.85rem;
-          font-size: 0.95rem;
-          color: var(--fg);
-          outline: none;
-          transition: border-color .2s;
-        }
-        .input:focus { border-color: var(--accent-rose); }
-      `}</style>
     </Modal>
   )
 }
+
+/** 输入框样式:匹配应用 glassmorphism 风格 */
+const inputCls = cn(
+  'w-full rounded-xl border border-border-c bg-[color-mix(in_srgb,var(--card)_50%,transparent)]',
+  'px-3 py-2 text-sm text-fg outline-none transition-all',
+  'placeholder:text-fg-soft/50 focus:border-rose',
+  'hover:border-rose/50'
+)
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

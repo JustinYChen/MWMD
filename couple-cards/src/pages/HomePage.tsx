@@ -1,13 +1,16 @@
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
+import dayjs from 'dayjs'
 import { motion } from 'framer-motion'
-import { ArrowRight, Sparkle, Layers, Cross, Heart } from 'lucide-react'
+import { ArrowRight, Sparkle, Layers, Cross, Heart, CalendarHeart } from 'lucide-react'
 import { GreetingHeader } from '@/components/profile/GreetingHeader'
 import { StaggerReveal, StaggerItem } from '@/components/ui/StaggerReveal'
 import { Footer } from '@/components/layout/Footer'
 import { QUOTES } from '@/data/quotes'
+import { usePlansStore } from '@/store/usePlansStore'
+import { getCountdown, countdownText, countdownColor, weekdayCN } from '@/lib/countdown'
 
 const MODES = [
   { icon: Sparkle, zh: '单抽', en: 'Single', desc: '抽一张，深聊一题，慢慢靠近。' },
@@ -44,6 +47,18 @@ export default function HomePage() {
   )
 
   const title = '"慢"问"慢"答'
+
+  const plans = usePlansStore((s) => s.plans)
+  // 最近一个有日期的未完成计划 + 已完成统计
+  const { nextPlan, completedCount } = useMemo(() => {
+    const dated = plans
+      .filter((p) => !p.completed && p.date)
+      .sort((a, b) => a.date.localeCompare(b.date))
+    return {
+      nextPlan: dated[0] ?? null,
+      completedCount: plans.filter((p) => p.completed).length,
+    }
+  }, [plans])
 
   return (
     <div>
@@ -155,6 +170,62 @@ export default function HomePage() {
               )
             })}
           </div>
+        </StaggerReveal>
+      </section>
+
+      {/* 下一个计划 */}
+      <section className="container-x pb-24">
+        <StaggerReveal>
+          <StaggerItem>
+            <p className="text-center font-display text-xl italic text-fg-soft">
+              下一个约定
+            </p>
+          </StaggerItem>
+          <StaggerItem>
+            {nextPlan ? (
+              <Link
+                to="/plans"
+                className="group mt-10 flex flex-col items-center gap-6 rounded-4xl glass px-8 py-12 text-center transition-transform hover:-translate-y-1 md:flex-row md:justify-between md:text-left"
+              >
+                <div className="min-w-0">
+                  <p className="flex items-center justify-center gap-2 text-sm text-fg-soft md:justify-start">
+                    <CalendarHeart size={15} />
+                    {dayjs(nextPlan.date).format('M月D日')} {weekdayCN(nextPlan.date)}
+                    {nextPlan.location ? ` · ${nextPlan.location}` : ''}
+                  </p>
+                  <h3 className="mt-3 truncate font-serif text-3xl font-semibold text-fg md:text-4xl">
+                    {nextPlan.title}
+                  </h3>
+                  {completedCount > 0 && (
+                    <p className="mt-3 text-sm text-fg-soft">
+                      一起完成了 {completedCount} 件小事
+                    </p>
+                  )}
+                </div>
+                <p
+                  className="shrink-0 font-serif text-5xl font-bold md:text-6xl"
+                  style={{ color: countdownColor(getCountdown(nextPlan.date)) }}
+                >
+                  {countdownText(getCountdown(nextPlan.date))}
+                </p>
+              </Link>
+            ) : (
+              <Link
+                to="/plans"
+                className="group mt-10 flex flex-col items-center gap-4 rounded-4xl border border-dashed border-border-c px-8 py-12 text-center transition-colors hover:border-rose"
+              >
+                <CalendarHeart size={28} className="text-fg-soft" />
+                <p className="font-serif text-xl text-fg-soft">
+                  {completedCount > 0
+                    ? `已完成 ${completedCount} 件,再许下一个约定吧`
+                    : '把想一起做的事,一件件记下来'}
+                </p>
+                <span className="inline-flex items-center gap-1 text-sm text-rose">
+                  去许愿 <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
+                </span>
+              </Link>
+            )}
+          </StaggerItem>
         </StaggerReveal>
       </section>
 
