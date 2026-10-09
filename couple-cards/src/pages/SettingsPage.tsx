@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, Moon, Sun, Volume2, Music, RotateCcw, Cloud, RefreshCw, Check, AlertCircle, Loader2, Upload, Download } from 'lucide-react'
+import { Settings as SettingsIcon, Moon, Sun, Volume2, Music, RotateCcw, Cloud, RefreshCw, Check, AlertCircle, Loader2, Upload, Download, LogIn, LogOut } from 'lucide-react'
 import { useProfileStore } from '@/store/useProfileStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { useDeckStore } from '@/store/useDeckStore'
@@ -10,8 +10,7 @@ import { audioEngine } from '@/lib/audioEngine'
 import { Footer } from '@/components/layout/Footer'
 import { Modal } from '@/components/ui/Modal'
 import { DatePicker } from '@/components/ui/DatePicker'
-import { verifyToken } from '@/lib/cloudSync'
-import { manualPull, manualPush } from '@/hooks/useCloudSync'
+import { manualPull, manualPush, loginCloud, logoutCloud } from '@/hooks/useCloudSync'
 import { cn } from '@/lib/utils'
 
 export default function SettingsPage() {
@@ -268,32 +267,29 @@ function Switch({
   )
 }
 
-/** 云同步设置区:输入 GitHub Token,管理跨设备同步 */
+/** 云同步设置区:登录共享账号(密码登录),管理跨设备同步 */
 function CloudSyncSection() {
-  const { token, autoSync, hasPending, status, lastSyncAt, error } = useSyncStore()
-  const { setToken, setAutoSync } = useSyncStore()
-  const [inputToken, setInputToken] = useState(token)
-  const [verifying, setVerifying] = useState(false)
-  const [verifyMsg, setVerifyMsg] = useState('')
+  const { account, autoSync, hasPending, status, lastSyncAt, error } = useSyncStore()
+  const { setAutoSync } = useSyncStore()
+  const [password, setPassword] = useState('')
+  const [loggingIn, setLoggingIn] = useState(false)
+  const [loginMsg, setLoginMsg] = useState('')
 
-  const handleSave = async () => {
-    if (!inputToken.trim()) {
-      setToken('')
-      setVerifyMsg('')
-      return
-    }
-    setVerifying(true)
-    setVerifyMsg('')
-    const ok = await verifyToken(inputToken.trim())
-    setVerifying(false)
-    if (ok) {
-      setToken(inputToken.trim())
-      setVerifyMsg('Token 验证通过')
-      // 保存后自动 pull 一次
-      setTimeout(() => manualPull(), 500)
+  const handleLogin = async () => {
+    if (!password.trim() || loggingIn) return
+    setLoggingIn(true)
+    setLoginMsg('')
+    const err = await loginCloud(password.trim())
+    setLoggingIn(false)
+    if (err) {
+      setLoginMsg('登录失败,密码不正确')
     } else {
-      setVerifyMsg('Token 无效或无 Gist 权限')
+      setPassword('')
     }
+  }
+
+  const handleLogout = () => {
+    void logoutCloud()
   }
 
   const fmtTime = (iso: string) => {
@@ -307,42 +303,22 @@ function CloudSyncSection() {
       <div className="flex items-start gap-2 text-xs text-fg-soft">
         <Cloud size={14} className="mt-0.5 shrink-0 text-gold" />
         <p>
-          通过 GitHub Gist 跨设备同步题库、收藏、历史和设置。
-          需要一个有 <code className="rounded bg-card px-1">gist</code> 权限的 GitHub Token。
-          <a
-            href="https://github.com/settings/tokens/new?scopes=gist&description=MWMD%20Cloud%20Sync"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-1 text-rose underline-offset-2 hover:underline"
-          >
-            点击创建 Token →
-          </a>
+          登录后,题库、收藏、历史、计划和图片会自动同步到云端,所有设备保持一致。
+          情侣二人共用同一个账号,输入共享密码即可。
         </p>
       </div>
 
-      <Field label="GitHub Token">
-        <input
-          type="password"
-          value={inputToken}
-          onChange={(e) => setInputToken(e.target.value)}
-          onBlur={handleSave}
-          placeholder="ghp_..."
-          className="setting-input"
-        />
-      </Field>
-
-      {verifyMsg && (
-        <p className={cn(
-          'flex items-center gap-1.5 text-xs',
-          verifyMsg.includes('通过') ? 'text-emerald-500' : 'text-rose'
-        )}>
-          {verifyMsg.includes('通过') ? <Check size={12} /> : <AlertCircle size={12} />}
-          {verifyMsg}
-        </p>
-      )}
-
-      {token && (
+      {account ? (
         <>
+          <Row label={`已登录 · ${account}`}>
+            <button
+              onClick={handleLogout}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border-c px-4 py-1.5 text-xs text-fg-soft transition-colors hover:text-rose"
+            >
+              <LogOut size={13} /> 退出登录
+            </button>
+          </Row>
+
           <Row label="自动同步">
             <Switch checked={autoSync} onChange={setAutoSync} />
           </Row>
@@ -376,6 +352,38 @@ function CloudSyncSection() {
               <Upload size={13} /> 推送到云端
             </button>
           </div>
+        </>
+      ) : (
+        <>
+          <Field label="同步密码">
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleLogin()
+                }}
+                placeholder="输入两人共用的同步密码"
+                className="setting-input"
+              />
+              <button
+                onClick={() => void handleLogin()}
+                disabled={loggingIn || !password.trim()}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-5 py-2 text-sm text-bg shadow-card transition-transform hover:scale-105 disabled:opacity-50"
+                style={{ background: 'linear-gradient(120deg, var(--accent-rose), var(--accent-gold))' }}
+              >
+                {loggingIn ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
+                登录
+              </button>
+            </div>
+          </Field>
+
+          {loginMsg && (
+            <p className="flex items-center gap-1.5 text-xs text-rose">
+              <AlertCircle size={12} /> {loginMsg}
+            </p>
+          )}
         </>
       )}
     </Section>

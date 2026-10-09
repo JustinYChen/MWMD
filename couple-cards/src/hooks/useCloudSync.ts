@@ -6,7 +6,15 @@ import { useHistoryStore } from '@/store/useHistoryStore'
 import { useQuestionBankStore } from '@/store/useQuestionBankStore'
 import { useDeckStore } from '@/store/useDeckStore'
 import { usePlansStore } from '@/store/usePlansStore'
-import { pullFromCloud, pushToCloud, type CloudData } from '@/lib/cloudSync'
+import {
+  signInCloud,
+  signOutCloud,
+  pullFromCloud,
+  pushToCloud,
+  type CloudData,
+} from '@/lib/cloudSync'
+import { APP_EMAIL } from '@/lib/supabase'
+import { migrateLocalImagesToCloud } from '@/lib/planMedia'
 
 /** push 失败后的自动重试延迟 */
 const RETRY_DELAY = 30_000
@@ -86,7 +94,7 @@ function applyCloudData(data: CloudData) {
 
   const plans = usePlansStore.getState()
   // 保护:云端 plans 为空(或缺失)而本地非空时,保留本地
-  // 场景:旧版本云端没有 plans 字段 / push 失败期间 pull,pull 会把空数组覆盖上来导致本地计划丢失
+  // 场景:push 失败期间 pull,pull 会把空数组覆盖上来导致本地计划丢失
   const cloudPlansEmpty =
     !data.plans?.plans || (Array.isArray(data.plans.plans) && data.plans.plans.length === 0)
   const keepLocalPlans = cloudPlansEmpty && plans.plans.length > 0
@@ -101,10 +109,10 @@ function applyCloudData(data: CloudData) {
 }
 
 /** 推送本地数据(成功返回 true) */
-async function doPush(token: string): Promise<boolean> {
+async function doPush(): Promise<boolean> {
   useSyncStore.getState().setStatus('syncing')
   try {
-    await pushToCloud(token, collectData())
+    await pushToCloud(collectData())
     useSyncStore.getState().setHasPending(false)
     useSyncStore.getState().setLastSyncAt(new Date().toISOString())
     useSyncStore.getState().setStatus('success')
@@ -119,16 +127,16 @@ async function doPush(token: string): Promise<boolean> {
 }
 
 /** 拉取云端数据并应用(成功返回 true);若应用后仍有待推送变更(如保留了本地计划)则补推一次 */
-async function doPull(token: string): Promise<boolean> {
+async function doPull(): Promise<boolean> {
   useSyncStore.getState().setStatus('syncing')
   try {
-    const data = await pullFromCloud(token)
+    const data = await pullFromCloud()
     if (data) applyCloudData(data)
     useSyncStore.getState().setLastSyncAt(new Date().toISOString())
     useSyncStore.getState().setStatus('success')
     // pull 应用了云端数据、但本地有云端没有的内容(受保护的计划),补推上去
     if (useSyncStore.getState().hasPending) {
-      await doPush(token)
+      await doPush()
     }
     return true
   } catch (err) {
@@ -140,63 +148,87 @@ async function doPull(token: string): Promise<boolean> {
   }
 }
 
+/** 登录共享账号(设置页调用);成功后由 hook 自动做启动同步 */
+export async function loginCloud(password: string): Promise<string | null> {
+  const err = await signInCloud(password)
+  if (!err) {
+    useSyncStore.getState().setAccount(APP_EMAIL)
+  }
+  return err
+}
+
+/** 退出登录(本地数据保留,仅停止云同步) */
+export async function logoutCloud(): Promise<void> {
+  await signOutCloud()
+  useSyncStore.getState().setAccount('')
+  useSyncStore.getState().setStatus('idle')
+}
+
 /** 手动拉取云端数据(用户主动操作,若本地有未推送变更先推再拉,避免覆盖丢数据) */
 export async function manualPull() {
-  const { token, hasPending } = useSyncStore.getState()
-  if (!token) return
+  const { account, hasPending } = useSyncStore.getState()
+  if (!account) return
   if (hasPending) {
-    const pushed = await doPush(token)
+    const pushed = await doPush()
     if (!pushed) return // 本地有未推送数据且推送失败,放弃本次拉取
   }
-  await doPull(token)
+  await doPull()
 }
 
 /** 手动推送本地数据到云端 */
 export async function manualPush() {
-  const { token } = useSyncStore.getState()
-  if (!token) return
-  await doPush(token)
+  const { account } = useSyncStore.getState()
+  if (!account) return
+  await doPush()
 }
 
 /**
  * 云端同步 hook:
- * - App 启动时若有 token:本地无未推送变更 → pull;
+ * - 登录后:本地无未推送变更 → pull;
  *   有未推送变更(上次 push 失败) → 先 push 成功再 pull,失败则不 pull(防止云端旧数据覆盖本地新数据)
+ * - 启动同步完成后自动迁移旧版本本机图片上云(一次性)
  * - 各 store 数据变更后,防抖 3s 自动推送(push)
  * - push 失败自动标记 pending 并在 30s 后重试
  * - pull 期间暂停 push,避免循环
  */
 export function useCloudSync() {
-  const token = useSyncStore((s) => s.token)
+  const account = useSyncStore((s) => s.account)
   const autoSync = useSyncStore((s) => s.autoSync)
   const pushTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const retryTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const isPulling = useRef(false)
   const hasInitialized = useRef(false)
 
-  // 启动同步(仅一次):pending 保护 + pull
+  // 登录态变化:登出时复位启动标记;登录后做启动同步(仅每个登录周期一次)
   useEffect(() => {
-    if (!token || hasInitialized.current) return
+    if (!account) {
+      hasInitialized.current = false
+      isPulling.current = false
+      return
+    }
+    if (hasInitialized.current) return
     hasInitialized.current = true
     isPulling.current = true
     ;(async () => {
       const { hasPending } = useSyncStore.getState()
       if (hasPending) {
         // 上次有未推送的变更:先推上去,成功后再拉,失败绝不让云端覆盖本地
-        const pushed = await doPush(token)
+        const pushed = await doPush()
         if (!pushed) {
           isPulling.current = false
           return
         }
       }
-      await doPull(token)
+      await doPull()
       isPulling.current = false
+      // 迁移旧版本存本机的图片上云(一次性,失败下次登录重试)
+      void migrateLocalImagesToCloud()
     })()
-  }, [token])
+  }, [account])
 
   // 数据变更后防抖 push(失败 30s 重试)
   useEffect(() => {
-    if (!token || !autoSync) return
+    if (!account || !autoSync) return
 
     const schedulePush = () => {
       if (isPulling.current) return // pull 期间的数据变更来自 applyCloudData,不标记不推送
@@ -204,12 +236,12 @@ export function useCloudSync() {
       useSyncStore.getState().setHasPending(true)
       clearTimeout(pushTimer.current)
       pushTimer.current = setTimeout(async () => {
-        const ok = await doPush(token)
+        const ok = await doPush()
         if (!ok) {
           // 推送失败(如网络中断):30s 后自动重试一次
           clearTimeout(retryTimer.current)
           retryTimer.current = setTimeout(() => {
-            doPush(token)
+            doPush()
           }, RETRY_DELAY)
         }
       }, 3000)
@@ -230,5 +262,5 @@ export function useCloudSync() {
       clearTimeout(pushTimer.current)
       clearTimeout(retryTimer.current)
     }
-  }, [token, autoSync])
+  }, [account, autoSync])
 }

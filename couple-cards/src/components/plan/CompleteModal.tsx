@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Camera, X } from 'lucide-react'
 import { usePlansStore } from '@/store/usePlansStore'
 import { Modal } from '@/components/ui/Modal'
-import { compressImage, setPlanImage } from '@/lib/planMedia'
+import { compressImage, uploadPlanImage } from '@/lib/planMedia'
 import type { Plan } from '@/types/plan'
 import { cn } from '@/lib/utils'
 
@@ -46,7 +46,13 @@ export function CompleteModal({ open, plan, onClose, onCompleted }: CompleteModa
     const nth = plans.filter((p) => p.completed).length + 1
     completePlan(plan.id, reflection.trim())
     updateHasReflectionPhoto(plan.id, !!photo)
-    if (photo) setPlanImage(plan.id, 'reflection', photo)
+    if (photo) {
+      // 照片异步上传云端(不阻塞完成流程)
+      const dataUrl = photo
+      void uploadPlanImage(plan.id, 'reflection', dataUrl).then((url) => {
+        if (!url) alert('照片上传失败,请确认已登录云同步账号后重试')
+      })
+    }
     onCompleted?.(nth)
     onClose()
   }
@@ -85,7 +91,7 @@ export function CompleteModal({ open, plan, onClose, onCompleted }: CompleteModa
             ) : (
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border-c py-5 text-xs text-fg-soft transition-colors hover:border-rose/50 hover:text-fg">
                 <Camera size={15} />
-                拍下 / 选择这个时刻(仅存本机)
+                拍下 / 选择这个时刻
                 <input
                   type="file"
                   accept="image/*"

@@ -1,26 +1,16 @@
 /**
- * 计划图片存储:配图 + 完成照片。
- * - 存在独立 localStorage key `cc:plan-media`,与云同步隔离(图片不上 Gist)
- * - 图片自动压缩(canvas 缩放 + jpeg),单张约 30-60KB
- * - localStorage 总限额约 5MB,超限时抛错并提示
+ * 计划图片存储:配图 + 完成照片,存 Supabase Storage 公开桶。
+ * - 路径固定为 {planId}/{kind}.jpg,upsert 覆盖,跨设备通过公开 URL 访问
+ * - 上传/删除需要已登录共享账号(RLS 保护)
+ * - 兼容迁移:旧版本图片存本机 localStorage(cc:plan-media),登录后自动上传云端并清理
  */
+import { supabase, STORAGE_BUCKET, planImageUrl } from './supabase'
 
-const KEY = 'cc:plan-media'
+/** 旧版本本机存储 key(仅迁移用) */
+const LEGACY_KEY = 'cc:plan-media'
 
 /** planId -> { cover?: dataUrl, reflection?: dataUrl } */
-type MediaMap = Record<string, { cover?: string; reflection?: string }>
-
-function load(): MediaMap {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) ?? '{}') as MediaMap
-  } catch {
-    return {}
-  }
-}
-
-function save(map: MediaMap) {
-  localStorage.setItem(KEY, JSON.stringify(map))
-}
+type LegacyMediaMap = Record<string, { cover?: string; reflection?: string }>
 
 /** 压缩图片文件为 jpeg dataUrl */
 export function compressImage(file: File, maxSize = 640, quality = 0.7): Promise<string> {
@@ -51,40 +41,88 @@ export function compressImage(file: File, maxSize = 640, quality = 0.7): Promise
   })
 }
 
-/** 保存计划图片(kind: cover 配图 / reflection 完成照片),失败时提示 */
-export function setPlanImage(planId: string, kind: 'cover' | 'reflection', dataUrl: string): boolean {
-  const map = load()
-  map[planId] ??= {}
-  map[planId][kind] = dataUrl
+/** dataUrl → Blob */
+function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  return fetch(dataUrl).then((r) => r.blob())
+}
+
+/**
+ * 上传计划图片到云端(kind: cover 配图 / reflection 完成照片)。
+ * 成功返回公开 URL,失败(未登录/网络异常)返回 null。
+ */
+export async function uploadPlanImage(
+  planId: string,
+  kind: 'cover' | 'reflection',
+  dataUrl: string
+): Promise<string | null> {
   try {
-    save(map)
-    return true
+    const blob = await dataUrlToBlob(dataUrl)
+    const { error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(`${planId}/${kind}.jpg`, blob, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      })
+    if (error) throw error
+    return planImageUrl(planId, kind)
   } catch {
-    alert('本机图片存储已满,请删除一些旧图片后再试')
-    return false
+    return null
   }
 }
 
-/** 读取计划图片(可能为 undefined,如换设备后图片丢失) */
-export function getPlanImage(planId: string, kind: 'cover' | 'reflection'): string | undefined {
-  return load()[planId]?.[kind]
+/** 计划图片公开 URL(同步函数,配合 hasCover/hasReflectionPhoto 标志使用) */
+export function getPlanImageUrl(planId: string, kind: 'cover' | 'reflection'): string {
+  return planImageUrl(planId, kind)
 }
 
-/** 删除计划的一张图片 */
-export function removePlanImage(planId: string, kind: 'cover' | 'reflection') {
-  const map = load()
-  if (map[planId]) {
-    delete map[planId][kind]
-    if (!map[planId].cover && !map[planId].reflection) delete map[planId]
-    save(map)
+/** 删除云端计划图片(静默失败,不影响主流程) */
+export async function removeCloudPlanImage(
+  planId: string,
+  kind: 'cover' | 'reflection'
+): Promise<void> {
+  try {
+    await supabase.storage.from(STORAGE_BUCKET).remove([`${planId}/${kind}.jpg`])
+  } catch {
+    /* 静默 */
   }
 }
 
-/** 删除计划的全部图片(删除计划时调用) */
-export function removePlanImages(planId: string) {
-  const map = load()
-  if (map[planId]) {
-    delete map[planId]
-    save(map)
+/** 删除计划的全部云端图片(删除计划/取消完成时调用) */
+export async function removeCloudPlanImages(planId: string): Promise<void> {
+  try {
+    await supabase.storage
+      .from(STORAGE_BUCKET)
+      .remove([`${planId}/cover.jpg`, `${planId}/reflection.jpg`])
+  } catch {
+    /* 静默 */
   }
+}
+
+/**
+ * 一次性迁移:把旧版本存本机的图片上传云端。
+ * 全部成功后清掉本机存储;有失败则保留,下次登录重试。返回迁移张数。
+ */
+export async function migrateLocalImagesToCloud(): Promise<number> {
+  let map: LegacyMediaMap = {}
+  try {
+    map = JSON.parse(localStorage.getItem(LEGACY_KEY) ?? '{}') as LegacyMediaMap
+  } catch {
+    return 0
+  }
+  const ids = Object.keys(map)
+  if (ids.length === 0) return 0
+
+  let migrated = 0
+  let allOk = true
+  for (const id of ids) {
+    for (const kind of ['cover', 'reflection'] as const) {
+      const dataUrl = map[id]?.[kind]
+      if (!dataUrl) continue
+      const url = await uploadPlanImage(id, kind, dataUrl)
+      if (url) migrated++
+      else allOk = false
+    }
+  }
+  if (allOk) localStorage.removeItem(LEGACY_KEY)
+  return migrated
 }

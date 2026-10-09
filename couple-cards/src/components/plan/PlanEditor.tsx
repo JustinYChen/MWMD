@@ -3,7 +3,7 @@ import { Image as ImageIcon, Trash2, Upload, X } from 'lucide-react'
 import { usePlansStore } from '@/store/usePlansStore'
 import { Modal } from '@/components/ui/Modal'
 import { DatePicker } from '@/components/ui/DatePicker'
-import { compressImage, getPlanImage, setPlanImage, removePlanImage } from '@/lib/planMedia'
+import { compressImage, getPlanImageUrl, uploadPlanImage, removeCloudPlanImage, removeCloudPlanImages } from '@/lib/planMedia'
 import type { Plan } from '@/types/plan'
 import { cn } from '@/lib/utils'
 
@@ -55,7 +55,7 @@ export function PlanEditor({ open, plan, onClose }: PlanEditorProps) {
       setLocation(plan.location)
       setBudget(plan.budget != null ? String(plan.budget) : '')
       setActualCost(plan.actualCost != null ? String(plan.actualCost) : '')
-      setCover(plan.hasCover ? getPlanImage(plan.id, 'cover') : undefined)
+      setCover(plan.hasCover ? getPlanImageUrl(plan.id, 'cover') : undefined)
     } else {
       setTitle('')
       setNote('')
@@ -83,6 +83,8 @@ export function PlanEditor({ open, plan, onClose }: PlanEditorProps) {
     if (!t) return
     const b = budget.trim() === '' ? null : Number(budget)
     const a = actualCost.trim() === '' ? null : Number(actualCost)
+    // data: 开头 = 新选择的图片需上传;http 开头 = 沿用云端原图,无需重传
+    const uploadErr = () => alert('配图上传失败,请确认已在设置中登录云同步账号后重试')
 
     if (plan) {
       updatePlan(plan.id, {
@@ -95,9 +97,14 @@ export function PlanEditor({ open, plan, onClose }: PlanEditorProps) {
         actualCost: Number.isFinite(a as number) ? a : null,
         hasCover: !!cover,
       })
-      // 图片写入本机存储
-      if (cover) setPlanImage(plan.id, 'cover', cover)
-      else removePlanImage(plan.id, 'cover')
+      // 图片上传云端(异步,不阻塞关闭弹窗)
+      if (cover?.startsWith('data:')) {
+        void uploadPlanImage(plan.id, 'cover', cover).then((url) => {
+          if (!url) uploadErr()
+        })
+      } else if (!cover) {
+        void removeCloudPlanImage(plan.id, 'cover')
+      }
     } else {
       addPlan({
         title: t,
@@ -109,12 +116,16 @@ export function PlanEditor({ open, plan, onClose }: PlanEditorProps) {
         actualCost: Number.isFinite(a as number) ? a : null,
         hasCover: !!cover,
       })
-      // 新建的 id 在 store 内生成,这里无法立即写图 —— 通过队列在下一帧补写
-      if (cover) {
-        // addPlan 后 store 里最新一条即新建项
+      // 新建的 id 在 store 内生成,这里无法立即上传 —— 下一帧拿到 id 后补传
+      if (cover?.startsWith('data:')) {
+        const dataUrl = cover
         setTimeout(() => {
           const latest = usePlansStore.getState().plans[0]
-          if (latest) setPlanImage(latest.id, 'cover', cover)
+          if (latest) {
+            void uploadPlanImage(latest.id, 'cover', dataUrl).then((url) => {
+              if (!url) uploadErr()
+            })
+          }
         }, 0)
       }
     }
@@ -128,8 +139,7 @@ export function PlanEditor({ open, plan, onClose }: PlanEditorProps) {
       return
     }
     removePlan(plan.id)
-    removePlanImage(plan.id, 'cover')
-    removePlanImage(plan.id, 'reflection')
+    void removeCloudPlanImages(plan.id)
     onClose()
   }
 
@@ -223,7 +233,7 @@ export function PlanEditor({ open, plan, onClose }: PlanEditorProps) {
           />
         </Field>
 
-        <Field label="配图(仅存本机,不上云)">
+        <Field label="配图(存云端,所有设备可见)">
           {cover ? (
             <div className="relative overflow-hidden rounded-xl">
               <img src={cover} alt="配图" className="h-40 w-full object-cover" />

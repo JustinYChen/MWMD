@@ -4,8 +4,8 @@ import { persist } from 'zustand/middleware'
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error'
 
 interface SyncStore {
-  /** GitHub token(存 localStorage,不硬编码) */
-  token: string
+  /** 已登录的共享账号 email(空 = 未登录;session 由 supabase-js 管理) */
+  account: string
   /** 是否启用自动同步 */
   autoSync: boolean
   /** 本地有未成功推送到云端的变更(防止 pull 覆盖丢数据) */
@@ -16,7 +16,7 @@ interface SyncStore {
   status: SyncStatus
   /** 错误信息 */
   error: string
-  setToken: (t: string) => void
+  setAccount: (a: string) => void
   setAutoSync: (b: boolean) => void
   setHasPending: (b: boolean) => void
   setLastSyncAt: (t: string) => void
@@ -26,13 +26,13 @@ interface SyncStore {
 export const useSyncStore = create<SyncStore>()(
   persist(
     (set) => ({
-      token: '',
+      account: '',
       autoSync: true,
       hasPending: false,
       lastSyncAt: '',
       status: 'idle',
       error: '',
-      setToken: (token) => set({ token }),
+      setAccount: (account) => set({ account }),
       setAutoSync: (autoSync) => set({ autoSync }),
       setHasPending: (hasPending) => set({ hasPending }),
       setLastSyncAt: (lastSyncAt) => set({ lastSyncAt }),
@@ -40,10 +40,19 @@ export const useSyncStore = create<SyncStore>()(
     }),
     {
       name: 'cc:sync',
-      version: 1,
-      // 只持久化 token/autoSync/hasPending,不持久化运行时状态
+      version: 2,
+      // v1 存的是 GitHub token(Gist 同步),v2 起换 Supabase 账号登录,token 弃用
+      migrate: (persisted) => {
+        const old = persisted as { autoSync?: boolean; hasPending?: boolean }
+        return {
+          account: '',
+          autoSync: old.autoSync ?? true,
+          hasPending: old.hasPending ?? false,
+        }
+      },
+      // 只持久化 account/autoSync/hasPending,不持久化运行时状态
       partialize: (s) => ({
-        token: s.token,
+        account: s.account,
         autoSync: s.autoSync,
         hasPending: s.hasPending,
       }),

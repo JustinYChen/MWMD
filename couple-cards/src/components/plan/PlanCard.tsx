@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, CalendarPlus, MapPin, Trash2, ImageOff } from 'lucide-react'
+import { Check, CalendarPlus, MapPin, Trash2 } from 'lucide-react'
 import dayjs from 'dayjs'
 import type { Plan, PlanCategory } from '@/types/plan'
 import { getCountdown, countdownText, countdownColor, weekdayCN } from '@/lib/countdown'
-import { getPlanImage } from '@/lib/planMedia'
+import { getPlanImageUrl } from '@/lib/planMedia'
 import { cn } from '@/lib/utils'
 
 interface PlanCardProps {
@@ -48,6 +48,32 @@ function CountdownBadge({ date }: { date: string }) {
   )
 }
 
+/**
+ * 云端图片:保存后文件可能还在异步上传中,首次加载会失败。
+ * 失败后带间隔自动重试,超过次数放弃(如旧数据本就无文件)。
+ */
+function CloudImg({
+  src,
+  alt,
+  className,
+}: {
+  src: string
+  alt: string
+  className?: string
+}) {
+  const [attempt, setAttempt] = useState(0)
+  return (
+    <img
+      src={attempt ? `${src}?retry=${attempt}` : src}
+      alt={alt}
+      className={className}
+      onError={() => {
+        if (attempt < 6) setTimeout(() => setAttempt((a) => a + 1), 1500)
+      }}
+    />
+  )
+}
+
 export function PlanCard({
   plan,
   category,
@@ -58,9 +84,9 @@ export function PlanCard({
   index = 0,
 }: PlanCardProps) {
   const [confirmDel, setConfirmDel] = useState(false)
-  const cover = plan.hasCover ? getPlanImage(plan.id, 'cover') : undefined
+  const cover = plan.hasCover ? getPlanImageUrl(plan.id, 'cover') : undefined
   const reflectionPhoto = plan.hasReflectionPhoto
-    ? getPlanImage(plan.id, 'reflection')
+    ? getPlanImageUrl(plan.id, 'reflection')
     : undefined
   const cd = getCountdown(plan.date)
 
@@ -99,7 +125,7 @@ export function PlanCard({
           {(plan.reflection || reflectionPhoto) && (
             <div className="mt-3 rounded-xl border border-border-c/50 bg-[color-mix(in_srgb,var(--card)_40%,transparent)] p-3">
               {reflectionPhoto && (
-                <img
+                <CloudImg
                   src={reflectionPhoto}
                   alt="完成时刻"
                   className="mb-2 h-28 w-full rounded-lg object-cover"
@@ -139,7 +165,7 @@ export function PlanCard({
         onClick={() => onEdit(plan)}
       >
         <div className="relative h-44 md:h-52">
-          <img src={cover} alt={plan.title} className="h-full w-full object-cover" />
+          <CloudImg src={cover} alt={plan.title} className="h-full w-full object-cover" />
           {/* 底部渐变遮罩,保证文字可读 */}
           <div
             className="absolute inset-0"
@@ -274,14 +300,5 @@ export function PlanCard({
         </button>
       </div>
     </motion.div>
-  )
-}
-
-/** 愿望池空态提示(无日期但 hasCover 为 false 时本地图片丢失的角标) */
-export function MediaMissingHint() {
-  return (
-    <span className="inline-flex items-center gap-1 text-xs text-fg-soft/60">
-      <ImageOff size={11} /> 图片仅存本机
-    </span>
   )
 }

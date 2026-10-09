@@ -10,7 +10,7 @@ import { Footer } from '@/components/layout/Footer'
 import { Modal } from '@/components/ui/Modal'
 import { DatePicker } from '@/components/ui/DatePicker'
 import { milestoneOf } from '@/lib/countdown'
-import { removePlanImages } from '@/lib/planMedia'
+import { removeCloudPlanImages } from '@/lib/planMedia'
 import type { Plan } from '@/types/plan'
 import { cn } from '@/lib/utils'
 
@@ -52,7 +52,7 @@ export default function PlansPage() {
 
   const handleDelete = (plan: Plan) => {
     removePlan(plan.id)
-    removePlanImages(plan.id)
+    void removeCloudPlanImages(plan.id)
   }
 
   const handleToggleComplete = (plan: Plan) => {
@@ -60,7 +60,7 @@ export default function PlansPage() {
       // 已完成 → 取消完成(同时清掉感想照片)
       updatePlan(plan.id, { hasReflectionPhoto: false })
       usePlansStore.getState().uncompletePlan(plan.id)
-      removePlanImages(plan.id)
+      void removeCloudPlanImages(plan.id)
     } else {
       setCompleting(plan)
     }

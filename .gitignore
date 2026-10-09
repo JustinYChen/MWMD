@@ -1,0 +1,2 @@
+# Supabase 初始化/运维脚本(含数据库密码与 Token,严禁入库)
+.supabase-setup/
