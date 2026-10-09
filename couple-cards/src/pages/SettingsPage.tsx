@@ -270,7 +270,7 @@ function Switch({
 
 /** 云同步设置区:输入 GitHub Token,管理跨设备同步 */
 function CloudSyncSection() {
-  const { token, autoSync, status, lastSyncAt, error } = useSyncStore()
+  const { token, autoSync, hasPending, status, lastSyncAt, error } = useSyncStore()
   const { setToken, setAutoSync } = useSyncStore()
   const [inputToken, setInputToken] = useState(token)
   const [verifying, setVerifying] = useState(false)
@@ -349,12 +349,15 @@ function CloudSyncSection() {
 
           <div className="flex items-center gap-2 text-xs text-fg-soft">
             {status === 'syncing' && <Loader2 size={12} className="animate-spin text-gold" />}
-            {status === 'success' && <Check size={12} className="text-emerald-500" />}
+            {status === 'success' && !hasPending && <Check size={12} className="text-emerald-500" />}
             {status === 'error' && <AlertCircle size={12} className="text-rose" />}
             <span>
               {status === 'syncing' ? '同步中...' : `上次同步: ${fmtTime(lastSyncAt)}`}
             </span>
             {error && <span className="text-rose">· {error}</span>}
+            {hasPending && status !== 'syncing' && (
+              <span className="text-gold">· 有变更未同步到云端</span>
+            )}
           </div>
 
           <div className="flex gap-2">
