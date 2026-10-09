@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useSyncStore } from '@/store/useSyncStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { useFavoritesStore } from '@/store/useFavoritesStore'
@@ -11,6 +12,7 @@ import {
   signOutCloud,
   pullFromCloud,
   pushToCloud,
+  ensureSession,
   type CloudData,
 } from '@/lib/cloudSync'
 import { APP_ACCOUNT } from '@/lib/supabase'
@@ -18,6 +20,13 @@ import { migrateLocalImagesToCloud } from '@/lib/planMedia'
 
 /** push 失败后的自动重试延迟 */
 const RETRY_DELAY = 30_000
+/** 页面重新可见时的 pull 节流间隔(防止频繁切窗口狂打数据库) */
+const VISIBILITY_PULL_THROTTLE = 30_000
+/** 本地变更后自动推送的防抖延迟 */
+const PUSH_DEBOUNCE = 3_000
+
+/** pull 全局锁:同一时刻只允许一个 pull 流程(路由切换/启动/手动共用) */
+let isPulling = false
 
 /** 收集各 store 当前数据(仅数据字段,不含方法) */
 function collectData(): CloudData {
@@ -108,8 +117,14 @@ function applyCloudData(data: CloudData) {
   })
 }
 
-/** 推送本地数据(成功返回 true) */
+/** 推送本地数据(成功返回 true);登录失效时给出明确提示而非误导性的 RLS 报错 */
 async function doPush(): Promise<boolean> {
+  if (!(await ensureSession())) {
+    useSyncStore
+      .getState()
+      .setStatus('error', '登录已过期,请在设置页重新登录后再同步')
+    return false
+  }
   useSyncStore.getState().setStatus('syncing')
   try {
     await pushToCloud(collectData())
@@ -128,6 +143,12 @@ async function doPush(): Promise<boolean> {
 
 /** 拉取云端数据并应用(成功返回 true);若应用后仍有待推送变更(如保留了本地计划)则补推一次 */
 async function doPull(): Promise<boolean> {
+  if (!(await ensureSession())) {
+    useSyncStore
+      .getState()
+      .setStatus('error', '登录已过期,请在设置页重新登录后再同步')
+    return false
+  }
   useSyncStore.getState().setStatus('syncing')
   try {
     const data = await pullFromCloud()
@@ -165,15 +186,24 @@ export async function logoutCloud(): Promise<void> {
   useSyncStore.getState().setStatus('idle')
 }
 
-/** 手动拉取云端数据(用户主动操作,若本地有未推送变更先推再拉,避免覆盖丢数据) */
+/**
+ * 智能拉取(路由切换/页面可见/手动共用):
+ * - 有未推送的本地变更 → 先推再拉,绝不让云端旧数据覆盖本地新数据
+ * - 全局锁防并发,多个触发点同时到达只跑一次
+ */
 export async function manualPull() {
   const { account, hasPending } = useSyncStore.getState()
-  if (!account) return
-  if (hasPending) {
-    const pushed = await doPush()
-    if (!pushed) return // 本地有未推送数据且推送失败,放弃本次拉取
+  if (!account || isPulling) return
+  isPulling = true
+  try {
+    if (hasPending) {
+      const pushed = await doPush()
+      if (!pushed) return // 本地有未推送数据且推送失败,放弃本次拉取
+    }
+    await doPull()
+  } finally {
+    isPulling = false
   }
-  await doPull()
 }
 
 /** 手动推送本地数据到云端 */
@@ -184,68 +214,76 @@ export async function manualPush() {
 }
 
 /**
- * 云端同步 hook:
- * - 登录后:本地无未推送变更 → pull;
- *   有未推送变更(上次 push 失败) → 先 push 成功再 pull,失败则不 pull(防止云端旧数据覆盖本地新数据)
- * - 启动同步完成后自动迁移旧版本本机图片上云(一次性)
- * - 各 store 数据变更后,防抖 3s 自动推送(push)
- * - push 失败自动标记 pending 并在 30s 后重试
- * - pull 期间暂停 push,避免循环
+ * 云端同步 hook(须挂载在 Router 内的常驻布局,如 RootLayout):
+ *
+ * 触发时机——
+ * 1. 启动/刷新/登录:有 pending 先推再拉,否则直接拉
+ * 2. 本地数据变更:立即标 pending,3s 防抖推送;失败 30s 自动重试
+ * 3. 路由切换(切 tab):自动拉取最新(多设备场景下切到页面即看到对方的改动)
+ * 4. 页面重新可见(从别的窗口/标签切回):节流 30s 拉取
+ * 5. 网络恢复:若有未推送变更立即补推
+ * 6. 设置页手动推送/拉取按钮
+ *
+ * 数据安全——
+ * - 任何 pull 前若本地有未推送变更,先推成功再拉(防覆盖丢数据)
+ * - pull 期间的数据变更来自 applyCloudData,不会触发推送循环
  */
 export function useCloudSync() {
   const account = useSyncStore((s) => s.account)
   const autoSync = useSyncStore((s) => s.autoSync)
+  const location = useLocation()
   const pushTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const retryTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const isPulling = useRef(false)
   const hasInitialized = useRef(false)
+  const lastVisiblePull = useRef(0)
 
-  // 登录态变化:登出时复位启动标记;登录后做启动同步(仅每个登录周期一次)
+  // 1. 登录态变化:登出时复位启动标记;登录后做启动同步(仅每个登录周期一次)
   useEffect(() => {
     if (!account) {
       hasInitialized.current = false
-      isPulling.current = false
       return
     }
     if (hasInitialized.current) return
     hasInitialized.current = true
-    isPulling.current = true
+    isPulling = true
     ;(async () => {
       const { hasPending } = useSyncStore.getState()
       if (hasPending) {
         // 上次有未推送的变更:先推上去,成功后再拉,失败绝不让云端覆盖本地
         const pushed = await doPush()
         if (!pushed) {
-          isPulling.current = false
+          isPulling = false
           return
         }
       }
       await doPull()
-      isPulling.current = false
+      isPulling = false
       // 迁移旧版本存本机的图片上云(一次性,失败下次登录重试)
       void migrateLocalImagesToCloud()
     })()
   }, [account])
 
-  // 数据变更后防抖 push(失败 30s 重试)
+  // 2. 数据变更后防抖 push(失败 30s 重试)
   useEffect(() => {
     if (!account || !autoSync) return
 
     const schedulePush = () => {
-      if (isPulling.current) return // pull 期间的数据变更来自 applyCloudData,不标记不推送
+      if (isPulling) return // pull 期间的数据变更来自 applyCloudData,不标记不推送
       // 本地数据发生变更,标记待推送(立即,不等防抖结束——防止 3s 内关页面丢标记)
       useSyncStore.getState().setHasPending(true)
       clearTimeout(pushTimer.current)
       pushTimer.current = setTimeout(async () => {
+        // 路由切换/网络恢复等路径可能已推过,避免重复推送
+        if (!useSyncStore.getState().hasPending) return
         const ok = await doPush()
         if (!ok) {
           // 推送失败(如网络中断):30s 后自动重试一次
           clearTimeout(retryTimer.current)
           retryTimer.current = setTimeout(() => {
-            doPush()
+            if (useSyncStore.getState().hasPending) doPush()
           }, RETRY_DELAY)
         }
-      }, 3000)
+      }, PUSH_DEBOUNCE)
     }
 
     // 订阅各 store 的数据变更
@@ -264,4 +302,38 @@ export function useCloudSync() {
       clearTimeout(retryTimer.current)
     }
   }, [account, autoSync])
+
+  // 3. 路由切换(切 tab)→ 自动拉取最新
+  //    依赖 pathname 单独声明:account/autoSync 变化时由其他 effect 处理
+  const pathname = location.pathname
+  useEffect(() => {
+    const { account: acc, autoSync: auto } = useSyncStore.getState()
+    if (!acc || !auto) return
+    if (!hasInitialized.current) return // 启动同步进行中,不抢
+    void manualPull()
+  }, [pathname])
+
+  // 4. 页面重新可见(切回标签页/窗口)→ 节流 30s 拉取
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      const { account: acc, autoSync: auto } = useSyncStore.getState()
+      if (!acc || !auto) return
+      if (Date.now() - lastVisiblePull.current < VISIBILITY_PULL_THROTTLE) return
+      lastVisiblePull.current = Date.now()
+      void manualPull()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
+  // 5. 网络恢复 → 有未推送变更立即补推
+  useEffect(() => {
+    const onOnline = () => {
+      const { account: acc, hasPending } = useSyncStore.getState()
+      if (acc && hasPending) void doPush()
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [])
 }

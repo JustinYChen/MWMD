@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion'
 import { Navbar } from '@/components/layout/Navbar'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { TransitionVeil } from '@/components/layout/TransitionVeil'
+import { useCloudSync } from '@/hooks/useCloudSync'
 import HomePage from '@/pages/HomePage'
 import DrawPage from '@/pages/DrawPage'
 import FavoritesPage from '@/pages/FavoritesPage'
@@ -14,6 +15,8 @@ import PlansPage from '@/pages/PlansPage'
 function RootLayout() {
   const loc = useLocation()
   const isDraw = loc.pathname === '/draw'
+  // 云同步挂在 Router 内常驻布局(需要 useLocation 监听路由切换触发拉取)
+  useCloudSync()
   return (
     <>
       <TransitionVeil />

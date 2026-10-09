@@ -51,8 +51,12 @@ export async function signOutCloud(): Promise<void> {
   await supabase.auth.signOut()
 }
 
-/** 当前是否有登录 session(同步读取,session 由 supabase-js 从 localStorage 恢复) */
-export async function hasSession(): Promise<boolean> {
+/**
+ * 确保登录态有效(过期时 supabase-js 会自动用 refresh token 续期)。
+ * 失效(如 refresh token 过期)时返回 false——此时任何读写都会以匿名身份
+ * 到达数据库,被 RLS 拒绝且错误信息只有误导性的 RLS 文案,应提前拦截。
+ */
+export async function ensureSession(): Promise<boolean> {
   const { data } = await supabase.auth.getSession()
   return !!data.session
 }
