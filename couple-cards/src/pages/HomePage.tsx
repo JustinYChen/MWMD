@@ -90,7 +90,7 @@ export default function HomePage() {
             ))}
           </h1>
           <p className="hero-sub mt-2 font-display text-2xl italic text-fg-soft md:text-4xl">
-            Slow Ask Slow Answer · 一场只属于两人的对话
+            一场只属于两人的对话
           </p>
           <p className="hero-sub mt-4 max-w-xl text-sm leading-relaxed text-fg-soft md:text-base">
             塔罗牌阵式问题抽卡。

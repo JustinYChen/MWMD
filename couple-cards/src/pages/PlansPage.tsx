@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { CalendarHeart, Plus, Settings2, Clock, Sparkles, CheckCircle2, PenLine } from 'lucide-react'
 import { usePlansStore } from '@/store/usePlansStore'
 import { PlanCard } from '@/components/plan/PlanCard'
@@ -11,13 +11,113 @@ import { Modal } from '@/components/ui/Modal'
 import { DatePicker } from '@/components/ui/DatePicker'
 import { milestoneOf } from '@/lib/countdown'
 import { removeCloudPlanImages } from '@/lib/planMedia'
-import type { Plan } from '@/types/plan'
+import type { Plan, PlanCategory } from '@/types/plan'
 import { cn } from '@/lib/utils'
 
-export default function PlansPage() {
-  const { plans, categories, addPlan, updatePlan, removePlan } = usePlansStore()
+/**
+ * 快速添加行:输入状态内聚在本组件,
+ * 打字只重渲染输入框本身,不触碰计划列表(回车才真正入列)。
+ */
+function QuickAddBar({ onOpenEditor }: { onOpenEditor: () => void }) {
+  const addPlan = usePlansStore((s) => s.addPlan)
+  const [title, setTitle] = useState('')
 
-  const [quickTitle, setQuickTitle] = useState('')
+  /* 回车即建为愿望 */
+  const handleQuickAdd = () => {
+    const t = title.trim()
+    if (!t) return
+    addPlan({ title: t })
+    setTitle('')
+  }
+
+  return (
+    <div className="mb-4 flex items-center gap-2">
+      <div className="relative flex-1">
+        <PenLine
+          size={15}
+          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-fg-soft/60"
+        />
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleQuickAdd()}
+          placeholder="想到一件想一起做的事?敲下回车,先存进愿望池…"
+          className={cn(
+            'w-full rounded-full border border-border-c py-3 pl-11 pr-4 text-sm text-fg outline-none',
+            'bg-[color-mix(in_srgb,var(--card)_50%,transparent)] transition-all',
+            'placeholder:text-fg-soft/50 focus:border-rose hover:border-rose/50'
+          )}
+        />
+      </div>
+      <button
+        onClick={onOpenEditor}
+        className="flex h-11 shrink-0 items-center gap-1.5 rounded-full px-5 text-sm font-medium text-bg shadow-card transition-transform hover:scale-105"
+        style={{
+          background: 'linear-gradient(120deg, var(--accent-rose), var(--accent-gold))',
+        }}
+      >
+        <Plus size={16} /> 详细计划
+      </button>
+    </div>
+  )
+}
+
+/** 计划分组区块(模块级组件,避免父级每次渲染重建组件类型导致整树重挂载、配图闪烁) */
+function Section({
+  icon: Icon,
+  title,
+  hint,
+  list,
+  className,
+  categoryOf,
+  onToggleComplete,
+  onEdit,
+  onDelete,
+  onSetDate,
+}: {
+  icon: typeof Clock
+  title: string
+  hint?: string
+  list: Plan[]
+  className?: string
+  categoryOf: (id: string) => PlanCategory | undefined
+  onToggleComplete: (plan: Plan) => void
+  onEdit: (plan: Plan) => void
+  onDelete: (plan: Plan) => void
+  onSetDate: (plan: Plan) => void
+}) {
+  if (list.length === 0) return null
+  return (
+    <section className={className}>
+      <div className="mb-3 flex items-center gap-2">
+        <Icon size={16} className="text-gold" />
+        <h2 className="font-display text-sm italic text-fg-soft">
+          {title}
+          <span className="ml-2 text-xs text-fg-soft/60">{list.length}</span>
+        </h2>
+        {hint && <span className="text-xs text-fg-soft/50">{hint}</span>}
+      </div>
+      <div className="flex flex-col gap-3">
+        {list.map((p, i) => (
+          <PlanCard
+            key={p.id}
+            plan={p}
+            category={categoryOf(p.categoryId)}
+            onToggleComplete={onToggleComplete}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onSetDate={onSetDate}
+            index={i}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+export default function PlansPage() {
+  const { plans, categories, updatePlan, removePlan } = usePlansStore()
+
   const [editing, setEditing] = useState<Plan | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
   const [completing, setCompleting] = useState<Plan | null>(null)
@@ -27,7 +127,10 @@ export default function PlansPage() {
   const [milestone, setMilestone] = useState<number | null>(null)
   const [filter, setFilter] = useState<string>('all')
 
-  const categoryOf = (id: string) => categories.find((c) => c.id === id)
+  const categoryOf = useCallback(
+    (id: string) => categories.find((c) => c.id === id),
+    [categories]
+  )
 
   /* 分组 */
   const { upcoming, wishes, completed } = useMemo(() => {
@@ -42,84 +145,42 @@ export default function PlansPage() {
     return { upcoming, wishes, completed }
   }, [plans, filter])
 
-  /* 快速添加:回车即建为愿望 */
-  const handleQuickAdd = () => {
-    const t = quickTitle.trim()
-    if (!t) return
-    addPlan({ title: t })
-    setQuickTitle('')
-  }
-
-  const handleDelete = (plan: Plan) => {
-    removePlan(plan.id)
-    void removeCloudPlanImages(plan.id)
-  }
-
-  const handleToggleComplete = (plan: Plan) => {
-    if (plan.completed) {
-      // 已完成 → 取消完成(同时清掉感想照片)
-      updatePlan(plan.id, { hasReflectionPhoto: false })
-      usePlansStore.getState().uncompletePlan(plan.id)
+  const handleDelete = useCallback(
+    (plan: Plan) => {
+      removePlan(plan.id)
       void removeCloudPlanImages(plan.id)
-    } else {
-      setCompleting(plan)
-    }
-  }
+    },
+    [removePlan]
+  )
 
-  const handleSetDate = (plan: Plan) => {
+  const handleToggleComplete = useCallback(
+    (plan: Plan) => {
+      if (plan.completed) {
+        // 已完成 → 取消完成(同时清掉感想照片)
+        updatePlan(plan.id, { hasReflectionPhoto: false })
+        usePlansStore.getState().uncompletePlan(plan.id)
+        void removeCloudPlanImages(plan.id)
+      } else {
+        setCompleting(plan)
+      }
+    },
+    [updatePlan]
+  )
+
+  const handleSetDate = useCallback((plan: Plan) => {
     setDatingPlan(plan)
     setDatingValue(plan.date || '')
-  }
+  }, [])
+
+  const handleEdit = useCallback((plan: Plan) => {
+    setEditing(plan)
+    setEditorOpen(true)
+  }, [])
 
   const confirmDating = () => {
     if (!datingPlan) return
     updatePlan(datingPlan.id, { date: datingValue })
     setDatingPlan(null)
-  }
-
-  const Section = ({
-    icon: Icon,
-    title,
-    hint,
-    list,
-    className,
-  }: {
-    icon: typeof Clock
-    title: string
-    hint?: string
-    list: Plan[]
-    className?: string
-  }) => {
-    if (list.length === 0) return null
-    return (
-      <section className={className}>
-        <div className="mb-3 flex items-center gap-2">
-          <Icon size={16} className="text-gold" />
-          <h2 className="font-display text-sm italic text-fg-soft">
-            {title}
-            <span className="ml-2 text-xs text-fg-soft/60">{list.length}</span>
-          </h2>
-          {hint && <span className="text-xs text-fg-soft/50">{hint}</span>}
-        </div>
-        <div className="flex flex-col gap-3">
-          {list.map((p, i) => (
-            <PlanCard
-              key={p.id}
-              plan={p}
-              category={categoryOf(p.categoryId)}
-              onToggleComplete={handleToggleComplete}
-              onEdit={(plan) => {
-                setEditing(plan)
-                setEditorOpen(true)
-              }}
-              onDelete={handleDelete}
-              onSetDate={handleSetDate}
-              index={i}
-            />
-          ))}
-        </div>
-      </section>
-    )
   }
 
   return (
@@ -144,38 +205,13 @@ export default function PlansPage() {
           </button>
         </header>
 
-        {/* 快速添加 + 详细模式 */}
-        <div className="mb-4 flex items-center gap-2">
-          <div className="relative flex-1">
-            <PenLine
-              size={15}
-              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-fg-soft/60"
-            />
-            <input
-              value={quickTitle}
-              onChange={(e) => setQuickTitle(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleQuickAdd()}
-              placeholder="想到一件想一起做的事?敲下回车,先存进愿望池…"
-              className={cn(
-                'w-full rounded-full border border-border-c py-3 pl-11 pr-4 text-sm text-fg outline-none',
-                'bg-[color-mix(in_srgb,var(--card)_50%,transparent)] transition-all',
-                'placeholder:text-fg-soft/50 focus:border-rose hover:border-rose/50'
-              )}
-            />
-          </div>
-          <button
-            onClick={() => {
-              setEditing(null)
-              setEditorOpen(true)
-            }}
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-full px-5 text-sm font-medium text-bg shadow-card transition-transform hover:scale-105"
-            style={{
-              background: 'linear-gradient(120deg, var(--accent-rose), var(--accent-gold))',
-            }}
-          >
-            <Plus size={16} /> 详细计划
-          </button>
-        </div>
+        {/* 快速添加 + 详细模式(输入状态内聚在 QuickAddBar,打字不触发列表重渲染) */}
+        <QuickAddBar
+          onOpenEditor={() => {
+            setEditing(null)
+            setEditorOpen(true)
+          }}
+        />
 
         {/* 分类筛选 */}
         <div className="mb-8 flex flex-wrap gap-2">
@@ -225,9 +261,37 @@ export default function PlansPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-10">
-            <Section icon={Clock} title="即将到来" list={upcoming} />
-            <Section icon={Sparkles} title="愿望池" hint="还没定日子的心动" list={wishes} />
-            <Section icon={CheckCircle2} title="已完成" list={completed} />
+            <Section
+              icon={Clock}
+              title="即将到来"
+              list={upcoming}
+              categoryOf={categoryOf}
+              onToggleComplete={handleToggleComplete}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onSetDate={handleSetDate}
+            />
+            <Section
+              icon={Sparkles}
+              title="愿望池"
+              hint="还没定日子的心动"
+              list={wishes}
+              categoryOf={categoryOf}
+              onToggleComplete={handleToggleComplete}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onSetDate={handleSetDate}
+            />
+            <Section
+              icon={CheckCircle2}
+              title="已完成"
+              list={completed}
+              categoryOf={categoryOf}
+              onToggleComplete={handleToggleComplete}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onSetDate={handleSetDate}
+            />
           </div>
         )}
       </div>

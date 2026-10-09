@@ -285,11 +285,9 @@ export function makeBackTexture(theme: Theme): THREE.CanvasTexture {
   ctx.bezierCurveTo(cx + 26, cy - 44, cx + 44, cy - 12, cx, cy + 32)
   ctx.fill()
 
-  // 上下文字
+  // 卡背标题
   ctx.fillStyle = tc.fgSoft
-  ctx.font = '500 16px "Cormorant Garamond", serif'
   ctx.textAlign = 'center'
-  ctx.fillText('SLOW ASK SLOW ANSWER', cx, 130)
   ctx.font = '500 20px "Noto Serif SC", serif'
   ctx.fillText('"慢"问"慢"答', cx, H - 110)
 

@@ -25,6 +25,9 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* 固定滚动条槽位:页面切换/内容高度变化时视口宽度恒定,
+     顶部导航不再因滚动条出现/消失而横向抖动 */
+  scrollbar-gutter: stable;
 }
 
 body {

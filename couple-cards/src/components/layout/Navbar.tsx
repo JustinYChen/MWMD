@@ -25,8 +25,9 @@ export function Navbar() {
         }}
       />
       <div className="relative mx-auto max-w-7xl px-4 md:px-10">
-        <nav className="flex items-center justify-between gap-3 py-3 md:py-4">
-          <Link to="/" className="group flex shrink-0 items-center gap-2">
+        {/* grid 三列:logo 宽度变化(字体分片 swap)不再推动中间导航,消除 nav 间距跳动 */}
+        <nav className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-3 md:py-4">
+          <Link to="/" className="group flex shrink-0 items-center gap-2 justify-self-start">
             <motion.span
               className="flex h-8 w-8 items-center justify-center rounded-full"
               style={{
@@ -38,14 +39,11 @@ export function Navbar() {
             </motion.span>
             <span className="hidden font-serif text-lg font-semibold text-fg sm:inline">
               "慢"问"慢"答
-              <span className="ml-1 font-display text-xs italic text-fg-soft">
-                Slow Ask Slow Answer
-              </span>
             </span>
           </Link>
 
           {/* 桌面端导航 */}
-          <ul className="hidden items-center gap-1 md:flex">
+          <ul className="hidden items-center gap-1 md:flex justify-self-center">
             {NAV.map((n) => {
               const active = loc.pathname === n.to
               return (
@@ -61,7 +59,8 @@ export function Navbar() {
                       <motion.span
                         layoutId="nav-active"
                         className="absolute inset-0 -z-10 rounded-full glass"
-                        transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+                        /* 临界阻尼(无过冲),切换 tab 时 pill 平滑滑移不回弹 */
+                        transition={{ type: 'spring', stiffness: 320, damping: 34 }}
                       />
                     )}
                     {n.zh}
@@ -72,7 +71,7 @@ export function Navbar() {
           </ul>
 
           {/* 右侧控件(音效/主题) */}
-          <div className="shrink-0">
+          <div className="shrink-0 justify-self-end">
             <TopControls />
           </div>
         </nav>

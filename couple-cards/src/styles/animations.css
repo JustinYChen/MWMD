@@ -57,6 +57,24 @@
   }
 }
 
+/* 云图加载占位:光带斜扫过暖色底,暗示"配图赶来中" */
+@keyframes cloud-img-sweep {
+  from {
+    transform: translateX(-130%) skewX(-12deg);
+  }
+  to {
+    transform: translateX(330%) skewX(-12deg);
+  }
+}
+.cloud-img-sweep {
+  animation: cloud-img-sweep 1.9s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cloud-img-sweep {
+    animation: none;
+  }
+}
+
 .animate-fade-up {
   animation: fade-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Check, CalendarPlus, MapPin, Trash2 } from 'lucide-react'
 import dayjs from 'dayjs'
@@ -49,8 +49,11 @@ function CountdownBadge({ date }: { date: string }) {
 }
 
 /**
- * 云端图片:保存后文件可能还在异步上传中,首次加载会失败。
- * 失败后带间隔自动重试,超过次数放弃(如旧数据本就无文件)。
+ * 云端图片:保存后文件可能还在异步上传中,首次加载会 404。
+ * - 未就绪:暖色微光占位 + 光带缓扫(绝不露出裂图图标)
+ * - 失败自动重试(1.5s 间隔,最多 6 次,上传完成后即可就绪)
+ * - 就绪:占位淡出、图片淡入并轻微收拢,交叉过渡不突兀
+ * - 重试耗尽仍失败(如旧数据本就无文件):停在静态柔和占位
  */
 function CloudImg({
   src,
@@ -62,19 +65,52 @@ function CloudImg({
   className?: string
 }) {
   const [attempt, setAttempt] = useState(0)
+  const [loaded, setLoaded] = useState(false)
+  const exhausted = !loaded && attempt >= 6
   return (
-    <img
-      src={attempt ? `${src}?retry=${attempt}` : src}
-      alt={alt}
-      className={className}
-      onError={() => {
-        if (attempt < 6) setTimeout(() => setAttempt((a) => a + 1), 1500)
-      }}
-    />
+    <span className={cn('relative block overflow-hidden', className)}>
+      {/* 占位:就绪后淡出让位,与图片交叉过渡 */}
+      <span
+        aria-hidden
+        className={cn(
+          'absolute inset-0 transition-opacity duration-700',
+          loaded && 'opacity-0'
+        )}
+        style={{
+          background:
+            'linear-gradient(120deg, color-mix(in srgb, var(--card) 72%, var(--accent-rose) 6%), color-mix(in srgb, var(--card) 60%, var(--accent-gold) 8%))',
+        }}
+      >
+        {/* 光带缓扫:暗示"配图赶来中";重试耗尽后停止 */}
+        {!loaded && !exhausted && (
+          <span
+            className="cloud-img-sweep absolute inset-y-0 block w-1/2"
+            style={{
+              background:
+                'linear-gradient(90deg, transparent, color-mix(in srgb, white 26%, transparent), transparent)',
+            }}
+          />
+        )}
+      </span>
+      {/* 图片:未就绪时不可见(裂图图标自然被遮蔽),就绪后淡入 */}
+      <img
+        src={attempt ? `${src}?retry=${attempt}` : src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          if (attempt < 6) setTimeout(() => setAttempt((a) => a + 1), 1500)
+        }}
+        className={cn(
+          'absolute inset-0 h-full w-full object-cover transition-all duration-700 ease-out',
+          loaded ? 'scale-100 opacity-100' : 'scale-[1.04] opacity-0'
+        )}
+      />
+    </span>
   )
 }
 
-export function PlanCard({
+/** 计划卡片(memo:无关渲染不重绘,避免配图闪烁) */
+function PlanCardBase({
   plan,
   category,
   onToggleComplete,
@@ -302,3 +338,5 @@ export function PlanCard({
     </motion.div>
   )
 }
+
+export const PlanCard = memo(PlanCardBase)
