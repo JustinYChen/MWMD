@@ -1,10 +1,7 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, Moon, Sun, Volume2, Music, RotateCcw, Cloud, RefreshCw, Check, AlertCircle, Loader2, Upload, Download, LogIn, LogOut } from 'lucide-react'
+import { Settings as SettingsIcon, Moon, Sun, Volume2, Music, Cloud, RefreshCw, Check, AlertCircle, Loader2, Upload, Download, LogIn, LogOut } from 'lucide-react'
 import { useProfileStore } from '@/store/useProfileStore'
 import { useSettingsStore } from '@/store/useSettingsStore'
-import { useDeckStore } from '@/store/useDeckStore'
-import { useHistoryStore } from '@/store/useHistoryStore'
-import { useFavoritesStore } from '@/store/useFavoritesStore'
 import { useSyncStore } from '@/store/useSyncStore'
 import { audioEngine } from '@/lib/audioEngine'
 import { Footer } from '@/components/layout/Footer'
@@ -28,10 +25,6 @@ export default function SettingsPage() {
     setVolume,
     setLanguage,
   } = useSettingsStore()
-  const resetDeck = useDeckStore((s) => s.resetDeck)
-  const clearHistory = useHistoryStore((s) => s.clearHistory)
-  const clearFavorites = useFavoritesStore((s) => s.clear)
-  const [resetOpen, setResetOpen] = useState(false)
 
   return (
     <div className="min-h-[100dvh] pt-24 md:pt-28">
@@ -136,53 +129,12 @@ export default function SettingsPage() {
 
           {/* 云同步 */}
           <CloudSyncSection />
-
-          {/* 数据 */}
-          <Section title="数据 · Data">
-            <button
-              onClick={() => setResetOpen(true)}
-              className="inline-flex items-center gap-2 rounded-full border border-rose/50 px-5 py-2.5 text-sm text-rose transition-colors hover:bg-rose/10"
-            >
-              <RotateCcw size={14} /> 重置所有数据
-            </button>
-            <p className="mt-2 text-xs text-fg-soft">
-              清空牌堆记录、收藏夹与历史记录，情侣信息也会清空。
-            </p>
-          </Section>
         </div>
       </div>
 
       <div className="container-x max-w-2xl mt-16">
         <Footer />
       </div>
-
-      <Modal open={resetOpen} onClose={() => setResetOpen(false)} title="重置所有数据？">
-        <p className="mb-6 text-sm text-fg-soft">
-          此操作不可恢复，将清空：已抽记录、收藏夹、历史、情侣信息与设置偏好。
-        </p>
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={() => setResetOpen(false)}
-            className="rounded-full border border-border-c px-5 py-2 text-sm text-fg-soft hover:text-fg"
-          >
-            取消
-          </button>
-          <button
-            onClick={() => {
-              resetDeck()
-              clearHistory()
-              clearFavorites()
-              useProfileStore.getState().reset()
-              useSettingsStore.getState().setTheme('light')
-              setResetOpen(false)
-            }}
-            className="rounded-full px-5 py-2 text-sm text-bg"
-            style={{ background: 'var(--accent-rose)' }}
-          >
-            确认重置
-          </button>
-        </div>
-      </Modal>
     </div>
   )
 }
