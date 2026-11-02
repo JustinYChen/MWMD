@@ -6,6 +6,8 @@ import type { HistoryRecord } from '@/types/deck'
 // 历史记录永久保存,不设上限。用户只能手动清空。
 interface HistoryState {
   records: HistoryRecord[]
+  /** 清空历史的时间点 ISO;早于它的记录不会再被其他设备带回来 */
+  clearedAt?: string
   addRecord: (q: Question, mode: DrawMode, favorited: boolean) => void
   clearHistory: () => void
 }
@@ -21,7 +23,7 @@ export const useHistoryStore = create<HistoryState>()(
             ...s.records,
           ],
         })),
-      clearHistory: () => set({ records: [] }),
+      clearHistory: () => set({ records: [], clearedAt: new Date().toISOString() }),
     }),
     {
       name: 'cc:history',

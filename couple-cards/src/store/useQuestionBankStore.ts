@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Question } from '@/types/question'
+import type { Tombstone } from '@/types/plan'
 import { ALL_QUESTIONS } from '@/lib/shuffle'
+import { pruneTombstones } from '@/lib/tombstone'
 
 /** 自定义题库 */
 export interface CustomBank {
@@ -20,6 +22,8 @@ interface QuestionBankState {
   banks: CustomBank[]
   /** 当前选中的题库 */
   activeBankId: ActiveBankId
+  /** 删除题库墓碑:防止其他设备把已删除的题库推回来 */
+  deletedBanks: Tombstone[]
 
   // ── 题库操作 ──
   addBank: (name: string) => string
@@ -52,6 +56,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
     (set, get) => ({
       banks: [],
       activeBankId: 'default',
+      deletedBanks: [],
 
       addBank: (name) => {
         const id = genId('bank')
@@ -73,7 +78,14 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           // 删除的是当前活动题库 → 回退到默认
           const activeBankId =
             s.activeBankId === id ? 'default' : s.activeBankId
-          return { banks, activeBankId }
+          return {
+            banks,
+            activeBankId,
+            deletedBanks: pruneTombstones([
+              ...s.deletedBanks,
+              { id, at: new Date().toISOString() },
+            ]),
+          }
         })
       },
 

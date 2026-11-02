@@ -31,6 +31,15 @@ export interface Plan {
   /** 是否有完成照片(同上) */
   hasReflectionPhoto: boolean
   createdAt: string
+  /** 最后修改时间 ISO;用于多设备合并时判断哪一方更新 */
+  updatedAt?: string
+}
+
+/** 删除墓碑:记录"这个条目是被删除的",避免其他设备把它当作"没见过的新数据"复活 */
+export interface Tombstone {
+  id: string
+  /** 删除时间 ISO */
+  at: string
 }
 
 /** 预设分类(莫兰迪色系,可由用户改名/换色/增删) */

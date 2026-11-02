@@ -4,6 +4,8 @@ import type { Settings } from '@/types/profile'
 import { audioEngine } from '@/lib/audioEngine'
 
 interface SettingsStore extends Settings {
+  /** 设置最后修改时间 ISO;多设备合并时据此判断哪一方的设置更新 */
+  updatedAt?: string
   toggleTheme: () => void
   setTheme: (t: 'light' | 'dark') => void
   setSound: (b: boolean) => void
@@ -12,10 +14,15 @@ interface SettingsStore extends Settings {
   setLanguage: (l: 'zh' | 'en') => void
 }
 
-function applyTheme(theme: 'light' | 'dark') {
+/** 把主题写到 <html data-theme>,让 CSS 变量生效 */
+export function applyTheme(theme: 'light' | 'dark') {
   if (typeof document !== 'undefined') {
     document.documentElement.setAttribute('data-theme', theme)
   }
+}
+
+function now(): string {
+  return new Date().toISOString()
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -30,25 +37,25 @@ export const useSettingsStore = create<SettingsStore>()(
         set((s) => {
           const next = s.theme === 'light' ? 'dark' : 'light'
           applyTheme(next)
-          return { theme: next }
+          return { theme: next, updatedAt: now() }
         }),
       setTheme: (t) => {
         applyTheme(t)
-        set({ theme: t })
+        set({ theme: t, updatedAt: now() })
       },
       setSound: (b) => {
         audioEngine.setSoundEnabled(b)
-        set({ soundEnabled: b })
+        set({ soundEnabled: b, updatedAt: now() })
       },
       setBgm: (b) => {
         audioEngine.setBgmEnabled(b)
-        set({ bgmEnabled: b })
+        set({ bgmEnabled: b, updatedAt: now() })
       },
       setVolume: (v) => {
         audioEngine.setVolume(v)
-        set({ volume: v })
+        set({ volume: v, updatedAt: now() })
       },
-      setLanguage: (l) => set({ language: l }),
+      setLanguage: (l) => set({ language: l, updatedAt: now() }),
     }),
     {
       name: 'cc:settings',
